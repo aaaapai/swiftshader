@@ -44,4 +44,4 @@ jobs:
       with:
         name: MobileGL
         path: |
-              **/lib.so
+              **/lib*.so
