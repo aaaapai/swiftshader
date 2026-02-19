@@ -2,7 +2,7 @@
 # set -e
 
 
-python commit_id.py check
+python ./src/commit_id.py check
 python ./src/commit_id.py gen ./src/commit.h
 
 # git clone --depth 1 https://github.com/aaaapai/FastSTL.git ./include/FastSTL
