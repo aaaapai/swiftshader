@@ -15,6 +15,7 @@ jobs:
     - uses: actions/checkout@main
       with:
          submodules: true
+         fetch-depth: 1
     
     # 添加ccache步骤
     - name: CCache
