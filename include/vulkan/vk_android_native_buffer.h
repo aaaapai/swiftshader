@@ -19,7 +19,6 @@
 
 /* MESA: A hack to avoid #ifdefs in driver code. */
 #ifdef __ANDROID__
-#include <cutils/native_handle.h>
 #include <vulkan/vulkan.h>
 
 #if ANDROID_API_LEVEL < 28
