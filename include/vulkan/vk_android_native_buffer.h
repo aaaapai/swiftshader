@@ -18,7 +18,7 @@
 #define __VK_ANDROID_NATIVE_BUFFER_H__
 
 /* MESA: A hack to avoid #ifdefs in driver code. */
-#ifdef __ANDROID__
+#ifndef __ANDROID__  //  maybe I don't need it.
 #include <vulkan/vulkan.h>
 
 #if ANDROID_API_LEVEL < 28
