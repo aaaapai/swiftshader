@@ -189,7 +189,7 @@ if(LINUX)
 endif()
 
 option_if_not_defined(SWIFTSHADER_BUILD_PVR "Build the PowerVR examples" FALSE)
-option_if_not_defined(SWIFTSHADER_BUILD_TESTS "Build unit tests" TRUE)
+option_if_not_defined(SWIFTSHADER_BUILD_TESTS "Build unit tests" FALSE)
 option_if_not_defined(SWIFTSHADER_BUILD_BENCHMARKS "Build benchmarks" FALSE)
 
 option_if_not_defined(SWIFTSHADER_USE_GROUP_SOURCES "Group the source files in a folder tree for Visual Studio" TRUE)
