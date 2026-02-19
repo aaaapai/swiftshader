@@ -211,7 +211,7 @@ set_shared_library_export_map(vk_swiftshader ${CMAKE_CURRENT_SOURCE_DIR})
 # debugging. ${VULKAN_API_LIBRARY_NAME} is the name of this drop-in API library.
 if(WIN32)
     set(VULKAN_API_LIBRARY_NAME "vulkan-1.dll")
-elseif(LINUX)
+elseif(LINUX OR ANDROID)
     set(VULKAN_API_LIBRARY_NAME "libvulkan.so.1")
 elseif(APPLE)
     set(VULKAN_API_LIBRARY_NAME "libvulkan.dylib")
