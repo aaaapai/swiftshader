@@ -200,12 +200,7 @@ target_link_options(vk_swiftshader
 
 target_link_libraries(vk_swiftshader
     PRIVATE
-        libs/libutils.so
-        libs/libcutils.so
         sync
-        libs/libhidlbase.so
-        libs/libhardware.so
-        libs/android.hardware.graphics.mapper@3.0.so
         log
         nativewindow
         vk_system
