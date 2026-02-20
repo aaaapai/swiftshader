@@ -245,7 +245,7 @@ void Image::getMemoryRequirements(VkMemoryRequirements2 *pMemoryRequirements) co
 			{
 				auto *requirements = reinterpret_cast<VkMemoryDedicatedRequirements *>(extensionRequirements);
 				device->getRequirements(requirements);
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 				if(getSupportedExternalMemoryHandleTypes() == VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID)
 				{
 					requirements->prefersDedicatedAllocation = VK_TRUE;
