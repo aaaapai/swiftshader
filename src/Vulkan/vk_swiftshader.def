@@ -281,4 +281,7 @@ EXPORTS
     vkAcquireImageANDROID
     vkGetSwapchainGrallocUsageANDROID
     vkGetSwapchainGrallocUsage2ANDROID
+    vkGetAndroidHardwareBufferPropertiesANDROID
+    vkGetMemoryAndroidHardwareBufferANDROID
+
 
