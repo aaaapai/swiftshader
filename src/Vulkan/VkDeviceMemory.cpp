@@ -22,7 +22,7 @@
 #include "VkMemory.hpp"
 #include "VkStringify.hpp"
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 
 // Helper struct which reads the parsed allocation info and
 // extracts relevant information related to the handle type
@@ -61,14 +61,14 @@ struct OpaqueFdAllocateInfo
 
 #	if defined(__APPLE__)
 #		include "VkDeviceMemoryExternalMac.hpp"
-#	elif defined(__linux__) && !defined(__ANDROID__)
+#	elif defined(__linux__)
 #		include "VkDeviceMemoryExternalLinux.hpp"
 #	else
 #		error "Missing VK_KHR_external_memory_fd implementation for this platform!"
 #	endif
 #endif
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 #	if defined(__ANDROID__)
 #		include "VkDeviceMemoryExternalAndroid.hpp"
 #	else
@@ -115,13 +115,13 @@ VkResult DeviceMemory::Allocate(const VkAllocationCallbacks *pAllocator, const V
 	}
 	allocateInfo.allocationSize += 15;
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	if(AHardwareBufferExternalMemory::SupportsAllocateInfo(extendedAllocationInfo))
 	{
 		return AHardwareBufferExternalMemory::Create(pAllocator, &allocateInfo, pMemory, extendedAllocationInfo, device);
 	}
 #endif
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 	if(OpaqueFdExternalMemory::SupportsAllocateInfo(extendedAllocationInfo))
 	{
 		return OpaqueFdExternalMemory::Create(pAllocator, &allocateInfo, pMemory, extendedAllocationInfo, device);
@@ -180,7 +180,7 @@ VkResult DeviceMemory::ParseAllocationInfo(const VkMemoryAllocateInfo *pAllocate
 			// This can safely be ignored on most platforms, as the Vulkan spec mentions:
 			// "If the pNext chain includes a VkMemoryDedicatedAllocateInfo structure, then that structure
 			//  includes a handle of the sole buffer or image resource that the memory *can* be bound to."
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 			extendedAllocationInfo->dedicatedAllocateInfo = reinterpret_cast<const VkMemoryDedicatedAllocateInfo *>(allocationInfo);
 #endif
 			break;
@@ -188,7 +188,7 @@ VkResult DeviceMemory::ParseAllocationInfo(const VkMemoryAllocateInfo *pAllocate
 			// This extension controls on which physical devices the memory gets allocated.
 			// SwiftShader only has a single physical device, so this extension does nothing in this case.
 			break;
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 		case VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR:
 			extendedAllocationInfo->importMemoryFdInfo = reinterpret_cast<const VkImportMemoryFdInfoKHR *>(allocationInfo);
 			if(extendedAllocationInfo->importMemoryFdInfo->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT)
@@ -202,11 +202,11 @@ VkResult DeviceMemory::ParseAllocationInfo(const VkMemoryAllocateInfo *pAllocate
 			extendedAllocationInfo->exportMemoryAllocateInfo = reinterpret_cast<const VkExportMemoryAllocateInfo *>(allocationInfo);
 			switch(extendedAllocationInfo->exportMemoryAllocateInfo->handleTypes)
 			{
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 			case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
 				break;
 #endif
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 			case VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID:
 				break;
 #endif
@@ -219,7 +219,7 @@ VkResult DeviceMemory::ParseAllocationInfo(const VkMemoryAllocateInfo *pAllocate
 				return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 			}
 			break;
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 		case VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID:
 			extendedAllocationInfo->importAndroidHardwareBufferInfo = reinterpret_cast<const VkImportAndroidHardwareBufferInfoANDROID *>(allocationInfo);
 			break;
@@ -364,14 +364,14 @@ VkExternalMemoryHandleTypeFlagBits DeviceMemory::getFlagBit() const
 	return typeFlagBit;
 }
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 VkResult DeviceMemory::exportFd(int *pFd) const
 {
 	return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 }
 #endif
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 VkResult DeviceMemory::exportAndroidHardwareBuffer(struct AHardwareBuffer **pAhb) const
 {
 	return VK_ERROR_OUT_OF_HOST_MEMORY;
