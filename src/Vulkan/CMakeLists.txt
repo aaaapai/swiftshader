@@ -26,6 +26,8 @@ set(ROOT_PROJECT_COMPILE_OPTIONS
 )
 
 set(VULKAN_SRC_FILES
+    nativewindow_stub.cpp
+    sync_stub.cpp
     libVulkan.cpp
     main.cpp
     resource.h
@@ -200,9 +202,7 @@ target_link_options(vk_swiftshader
 
 target_link_libraries(vk_swiftshader
     PRIVATE
-        sync
         log
-        nativewindow
         vk_system
         vk_pipeline
         vk_device
