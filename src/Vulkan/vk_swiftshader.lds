@@ -178,22 +178,6 @@ global:
 	# VK_KHR_display_swapchain
 	#vkCreateSharedSwapchainsKHR;
 
-	# VK_KHR_Xcb_surface
-	vkCreateXcbSurfaceKHR;
-	vkGetPhysicalDeviceXcbPresentationSupportKHR;
-
-	# VK_KHR_xlib_surface
-	vkCreateXlibSurfaceKHR;
-	vkGetPhysicalDeviceXlibPresentationSupportKHR;
-
-	# VK_KHR_wayland_surface
-	vkCreateWaylandSurfaceKHR;
-	vkGetPhysicalDeviceWaylandPresentationSupportKHR;
-
-	# VK_EXT_directfb_surface
-	vkCreateDirectFBSurfaceEXT;
-	vkGetPhysicalDeviceDirectFBPresentationSupportEXT;
-
 	# Vulkan 1.1 API entry functions
 	vkEnumerateInstanceVersion;
 	vkEnumeratePhysicalDeviceGroups;
@@ -288,6 +272,13 @@ global:
 	vkGetPrivateData;
 	vkQueueSubmit2;
 	vkSetPrivateData;
+
+    vkQueueSignalReleaseImageANDROID
+    vkAcquireImageANDROID
+    vkGetSwapchainGrallocUsageANDROID
+    vkGetSwapchainGrallocUsage2ANDROID
+    vkGetAndroidHardwareBufferPropertiesANDROID
+    vkGetMemoryAndroidHardwareBufferANDROID
 
 local:
 	*;
