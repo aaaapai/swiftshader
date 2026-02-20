@@ -52,12 +52,6 @@ echo "✅ 宏定义注入完成！"
 echo "📝 验证注入的宏："
 grep -A5 "pthread_cond_clockwait" "$COND_VAR_FILE" | head -10
 
-# 清理构建目录，确保重新编译
-BUILD_DIR="${GITHUB_WORKSPACE}/build"
-if [ -d "$BUILD_DIR" ]; then
-    echo "🗑️  清理构建目录: $BUILD_DIR"
-    rm -rf "$BUILD_DIR"
-fi
 
 python ./src/commit_id.py check
 python ./src/commit_id.py gen ./src/commit.h
