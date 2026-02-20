@@ -106,6 +106,8 @@ set(VULKAN_SRC_FILES
     VkTimelineSemaphore.cpp
     VkTimelineSemaphore.hpp
     VulkanPlatform.hpp
+    VkDeviceMemoryExternalAndroid.cpp
+    VkDeviceMemoryExternalAndroid.hpp
 )
 
 if(WIN32)
@@ -220,7 +222,7 @@ set_shared_library_export_map(vk_swiftshader ${CMAKE_CURRENT_SOURCE_DIR})
 if(WIN32)
     set(VULKAN_API_LIBRARY_NAME "vulkan-1.dll")
 elseif(LINUX OR ANDROID)
-    set(VULKAN_API_LIBRARY_NAME "libvulkan.so.1")
+    set(VULKAN_API_LIBRARY_NAME "libvulkan.so")
 elseif(APPLE)
     set(VULKAN_API_LIBRARY_NAME "libvulkan.dylib")
 elseif(FUCHSIA)
