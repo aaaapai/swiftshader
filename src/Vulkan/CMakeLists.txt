@@ -200,6 +200,8 @@ target_link_options(vk_swiftshader
 
 target_link_libraries(vk_swiftshader
     PRIVATE
+        log
+        nativewindow
         vk_system
         vk_pipeline
         vk_device
