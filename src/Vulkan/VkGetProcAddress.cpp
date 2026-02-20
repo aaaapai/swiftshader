@@ -141,7 +141,6 @@ static const std::unordered_map<std::string, InstanceFunctionEntry> instanceFunc
 	MAKE_VULKAN_INSTANCE_ENTRY(vkSubmitDebugUtilsMessageEXT),
 	// VK_EXT_tooling_info
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceToolProperties),
-#ifndef __ANDROID__
 	// VK_KHR_surface
 	MAKE_VULKAN_INSTANCE_ENTRY(vkDestroySurfaceKHR),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceSurfaceSupportKHR),
@@ -152,7 +151,6 @@ static const std::unordered_map<std::string, InstanceFunctionEntry> instanceFunc
 	// VK_KHR_get_surface_capabilities2
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceSurfaceCapabilities2KHR),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceSurfaceFormats2KHR),
-#endif
 #ifdef VK_USE_PLATFORM_XCB_KHR
 	// VK_KHR_Xcb_surface
 	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateXcbSurfaceKHR),
@@ -597,7 +595,6 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdWriteTimestamp2KHR),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkQueueSubmit2KHR),
 	    } },
-#ifndef __ANDROID__
 	// VK_KHR_swapchain
 	{
 	    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -623,7 +620,6 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	    {
 	        MAKE_VULKAN_DEVICE_ENTRY(vkReleaseSwapchainImagesEXT),
 	    } },
-#endif
 
 #if SWIFTSHADER_EXTERNAL_SEMAPHORE_OPAQUE_FD
 	// VK_KHR_external_semaphore_fd
