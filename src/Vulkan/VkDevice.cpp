@@ -157,13 +157,11 @@ Device::Device(const VkDeviceCreateInfo *pCreateInfo, void *mem, PhysicalDevice 
 	samplingRoutineCache.reset(new SamplingRoutineCache());
 	samplerIndexer.reset(new SamplerIndexer());
 
-#ifdef SWIFTSHADER_DEVICE_MEMORY_REPORT
 	const auto *deviceMemoryReportCreateInfo = GetExtendedStruct<VkDeviceDeviceMemoryReportCreateInfoEXT>(pCreateInfo->pNext, VK_STRUCTURE_TYPE_DEVICE_DEVICE_MEMORY_REPORT_CREATE_INFO_EXT);
 	if(deviceMemoryReportCreateInfo && deviceMemoryReportCreateInfo->pfnUserCallback != nullptr)
 	{
 		deviceMemoryReportCallbacks.emplace_back(deviceMemoryReportCreateInfo->pfnUserCallback, deviceMemoryReportCreateInfo->pUserData);
 	}
-#endif  // SWIFTSHADER_DEVICE_MEMORY_REPORT
 }
 
 void Device::destroy(const VkAllocationCallbacks *pAllocator)
@@ -518,7 +516,6 @@ void Device::removePrivateDataSlot(const PrivateData *privateDataSlot)
 	privateData.erase(privateDataSlot);
 }
 
-#ifdef SWIFTSHADER_DEVICE_MEMORY_REPORT
 void Device::emitDeviceMemoryReport(VkDeviceMemoryReportEventTypeEXT type, uint64_t memoryObjectId, VkDeviceSize size, VkObjectType objectType, uint64_t objectHandle, uint32_t heapIndex)
 {
 	if(deviceMemoryReportCallbacks.empty()) return;
@@ -539,6 +536,5 @@ void Device::emitDeviceMemoryReport(VkDeviceMemoryReportEventTypeEXT type, uint6
 		callback.first(&callbackData, callback.second);
 	}
 }
-#endif  // SWIFTSHADER_DEVICE_MEMORY_REPORT
 
 }  // namespace vk
