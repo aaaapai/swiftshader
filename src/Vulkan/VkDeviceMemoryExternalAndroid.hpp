@@ -58,7 +58,7 @@ public:
 
 	VkExternalMemoryHandleTypeFlagBits getFlagBit() const override { return typeFlagBit; }
 
-	virtual VkResult exportAndroidHardwareBuffer(AHardwareBuffer **pAhb) const override final;
+	virtual VkResult exportAndroidHardwareBuffer(AHardwareBuffer **pAhb) const final;
 
 	static VkFormat GetVkFormatFromAHBFormat(uint32_t ahbFormat);
 	static VkResult GetAndroidHardwareBufferFormatProperties(const AHardwareBuffer_Desc &ahbDesc, VkAndroidHardwareBufferFormatPropertiesANDROID *pFormat);
