@@ -976,7 +976,7 @@ void PhysicalDevice::getProperties(VkPhysicalDeviceVulkan11Properties *propertie
 void PhysicalDevice::getProperties(const VkExternalMemoryHandleTypeFlagBits *handleType, VkExternalImageFormatProperties *properties) const
 {
 	VkExternalMemoryProperties *extMemProperties = &properties->externalMemoryProperties;
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 	if(*handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT)
 	{
 		extMemProperties->compatibleHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
@@ -985,7 +985,7 @@ void PhysicalDevice::getProperties(const VkExternalMemoryHandleTypeFlagBits *han
 		return;
 	}
 #endif
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	if(*handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID)
 	{
 		extMemProperties->compatibleHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
@@ -1011,7 +1011,7 @@ void PhysicalDevice::getProperties(const VkExternalMemoryHandleTypeFlagBits *han
 void PhysicalDevice::getProperties(const VkExternalMemoryHandleTypeFlagBits *handleType, VkExternalBufferProperties *properties) const
 {
 	VkExternalMemoryProperties *extMemProperties = &properties->externalMemoryProperties;
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 	if(*handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT)
 	{
 		extMemProperties->compatibleHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
@@ -1020,7 +1020,7 @@ void PhysicalDevice::getProperties(const VkExternalMemoryHandleTypeFlagBits *han
 		return;
 	}
 #endif
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	if(*handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID)
 	{
 		extMemProperties->compatibleHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
@@ -1095,7 +1095,7 @@ void PhysicalDevice::getProperties(const VkPhysicalDeviceExternalBufferInfo *pEx
 {
 	VkExternalMemoryProperties *properties = &pExternalBufferProperties->externalMemoryProperties;
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD || SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD || SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	const VkExternalMemoryHandleTypeFlagBits *handleType = &pExternalBufferInfo->handleType;
 #endif
 
@@ -1108,7 +1108,7 @@ void PhysicalDevice::getProperties(const VkPhysicalDeviceExternalBufferInfo *pEx
 		return;
 	}
 #endif
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	if(*handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID)
 	{
 		properties->compatibleHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
@@ -1155,7 +1155,7 @@ void PhysicalDevice::getProperties(const VkPhysicalDeviceExternalSemaphoreInfo *
 		}
 	}
 
-#if SWIFTSHADER_EXTERNAL_SEMAPHORE_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_SEMAPHORE_OPAQUE_FD
 	if(pExternalSemaphoreInfo->handleType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT)
 	{
 		pExternalSemaphoreProperties->compatibleHandleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
