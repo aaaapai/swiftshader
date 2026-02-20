@@ -280,6 +280,7 @@ global:
     vkGetAndroidHardwareBufferPropertiesANDROID
     vkGetMemoryAndroidHardwareBufferANDROID
 
+    HMI;
 local:
 	*;
 };
