@@ -621,7 +621,7 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkReleaseSwapchainImagesEXT),
 	    } },
 
-#if SWIFTSHADER_EXTERNAL_SEMAPHORE_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_SEMAPHORE_OPAQUE_FD
 	// VK_KHR_external_semaphore_fd
 	{
 	    VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
@@ -641,7 +641,7 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	    } },
 #endif
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 	// VK_KHR_external_memory_fd
 	{
 	    VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
@@ -677,7 +677,7 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkGetImageSubresourceLayout2EXT),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkTransitionImageLayoutEXT),
 	    } },
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
+#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	// VK_ANDROID_external_memory_android_hardware_buffer
 	{
 	    VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
