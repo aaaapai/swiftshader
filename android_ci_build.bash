@@ -1,6 +1,5 @@
 #!/bin/bash
-# set -e
-
+set -e
 
 NDK_PATH="${1:-/usr/local/lib/android/sdk/ndk/29.0.14206865}"
 COND_VAR_FILE="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1/__condition_variable/condition_variable.h"
@@ -8,15 +7,32 @@ COND_VAR_FILE="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/inclu
 echo "🔧 正在注入兼容层实现: $COND_VAR_FILE"
 
 # 备份
-cp "$COND_VAR_FILE" "${COND_VAR_FILE}.bak.$(date +%Y%m%d%H%M%S)"
-echo "✅ 已备份"
+BACKUP_FILE="${COND_VAR_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+cp "$COND_VAR_FILE" "$BACKUP_FILE"
+echo "✅ 已备份到: $BACKUP_FILE"
 
 # 创建临时文件
 TEMP_FILE="${COND_VAR_FILE}.tmp"
 
-# 找到文件开头，注入兼容层代码
+# 找到文件开头，在原有头文件保护宏内部注入兼容层代码
 awk '
 BEGIN {
+    in_header_guard = 0;
+    guard_ended = 0;
+    injected = 0;
+}
+
+# 检测头文件保护的开始
+/^#ifndef _LIBCPP___CONDITION_VARIABLE_CONDITION_VARIABLE_H/ || /^#ifndef _LIBCPP_CONDITION_VARIABLE/ {
+    in_header_guard = 1;
+    print;
+    next;
+}
+
+# 在头文件保护宏的起始处注入代码
+in_header_guard && !injected && /^#define / {
+    print;
+    print "";
     print "// ========== PTHREAD COMPAT LAYER INJECTED ==========";
     print "#ifndef _PTHREAD_COMPAT_LAYER_H_";
     print "#define _PTHREAD_COMPAT_LAYER_H_";
@@ -89,7 +105,11 @@ BEGIN {
     print "#endif // __ANDROID_API__ < 30";
     print "// ========== END COMPAT LAYER ==========";
     print "";
+    injected = 1;
+    next;
 }
+
+# 打印其他所有行
 { print }
 ' "$COND_VAR_FILE" > "$TEMP_FILE"
 
@@ -100,12 +120,12 @@ echo "✅ 兼容层注入完成！"
 
 # 验证注入是否成功
 echo "📝 验证注入内容:"
-grep -A5 "PTHREAD COMPAT LAYER" "$COND_VAR_FILE"
+grep -A5 "PTHREAD COMPAT LAYER" "$COND_VAR_FILE" || echo "警告：未找到注入标记"
 
 echo ""
-echo "🔍 检查 pthread_cond_clockwait 定义:"
-grep -n "pthread_cond_clockwait" "$COND_VAR_FILE" | head -10
-
+echo "🔍 检查头文件保护宏结构:"
+grep -n "^#ifndef" "$COND_VAR_FILE" | head -3
+grep -n "^#endif" "$COND_VAR_FILE" | tail -3
 
 python ./src/commit_id.py check
 python ./src/commit_id.py gen ./src/commit.h
@@ -117,9 +137,6 @@ cmake_build () {
   cd build
   cmake $GITHUB_WORKSPACE -DANDROID_PLATFORM=29 -DANDROID_ABI=$ANDROID_ABI -DCMAKE_ANDROID_STL_TYPE=c++_static -DCMAKE_SYSTEM_NAME=Android -DANDROID_TOOLCHAIN=clang -DCMAKE_MAKE_PROGRAM=$ANDROID_NDK_LATEST_HOME/prebuilt/linux-x86_64/bin/make -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake
   cmake --build . --config Release --parallel 6
-  # 在bash中启用globstar
-  #shopt -s globstar
-  #$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip $GITHUB_WORKSPACE/**/libMobileGL.so
 }
 
 cmake_build arm64-v8a
