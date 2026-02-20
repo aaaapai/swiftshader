@@ -32,13 +32,9 @@ public:
 		uint64_t opaqueCaptureAddress = 0;
 		const VkExportMemoryAllocateInfo *exportMemoryAllocateInfo = nullptr;
 		const VkImportMemoryHostPointerInfoEXT *importMemoryHostPointerInfo = nullptr;
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 		const VkImportMemoryFdInfoKHR *importMemoryFdInfo = nullptr;
-#endif
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 		const VkImportAndroidHardwareBufferInfoANDROID *importAndroidHardwareBufferInfo = nullptr;
 		const VkMemoryDedicatedAllocateInfo *dedicatedAllocateInfo = nullptr;
-#endif
 #if VK_USE_PLATFORM_FUCHSIA
 		const VkImportMemoryZirconHandleInfoFUCHSIA *importMemoryZirconHandleInfo = nullptr;
 #endif
@@ -64,14 +60,10 @@ public:
 
 	static size_t ComputeRequiredAllocationSize(const VkMemoryAllocateInfo *pCreateInfo);
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 	virtual VkResult exportFd(int *pFd) const;
-#endif
 
-#if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	virtual VkResult exportAndroidHardwareBuffer(struct AHardwareBuffer **pAhb) const;
 	static VkResult GetAndroidHardwareBufferProperties(VkDevice &device, const struct AHardwareBuffer *buffer, VkAndroidHardwareBufferPropertiesANDROID *pProperties);
-#endif
 
 #if VK_USE_PLATFORM_FUCHSIA
 	virtual VkResult exportHandle(zx_handle_t *pHandle) const;
@@ -106,7 +98,6 @@ protected:
 	// A value of 0 corresponds to non-external memory.
 	virtual VkExternalMemoryHandleTypeFlagBits getFlagBit() const;
 
-#ifdef SWIFTSHADER_DEVICE_MEMORY_REPORT
 	virtual bool isImport() const
 	{
 		return false;
@@ -116,7 +107,6 @@ protected:
 	{
 		return (uint64_t)buffer;
 	}
-#endif  // SWIFTSHADER_DEVICE_MEMORY_REPORT
 
 	void *buffer = nullptr;
 	const VkDeviceSize allocationSize;
