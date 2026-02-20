@@ -4,6 +4,7 @@
 #include <android/log.h>
 #include <mutex>
 #include <atomic>
+#include <errno.h>
 
 #define LOG_TAG "NativeWindowWrapper"
 #define ALOGE(...) do { printf("E/%s: ", LOG_TAG); printf(__VA_ARGS__); printf("\n"); } while(0)
@@ -29,6 +30,16 @@ typedef int (*ANativeWindow_setUsage_t)(ANativeWindow*, uint64_t);
 typedef int (*ANativeWindow_setSharedBufferMode_t)(ANativeWindow*, bool);
 typedef int32_t (*ANativeWindow_getWidth_t)(ANativeWindow*);
 typedef int32_t (*ANativeWindow_getHeight_t)(ANativeWindow*);
+typedef int (*AHardwareBuffer_createFromHandle_t)(const AHardwareBuffer_Desc* desc,
+                                                   const native_handle_t* handle,
+                                                   uint32_t method,
+                                                   AHardwareBuffer** outBuffer);
+typedef int (*AHardwareBuffer_lockPlanes_t)(AHardwareBuffer* buffer,
+                                             uint64_t usage,
+                                             int32_t fence,
+                                             const ARect* rect,
+                                             AHardwareBuffer_Planes* outPlanes);
+typedef int (*AHardwareBuffer_unlock_t)(AHardwareBuffer* buffer, int32_t* fence);
 
 // 函数指针变量
 static ANativeWindowBuffer_getHardwareBuffer_t fp_ANativeWindowBuffer_getHardwareBuffer = nullptr;
@@ -49,6 +60,9 @@ static ANativeWindow_setUsage_t fp_ANativeWindow_setUsage = nullptr;
 static ANativeWindow_setSharedBufferMode_t fp_ANativeWindow_setSharedBufferMode = nullptr;
 static ANativeWindow_getWidth_t fp_ANativeWindow_getWidth = nullptr;
 static ANativeWindow_getHeight_t fp_ANativeWindow_getHeight = nullptr;
+static AHardwareBuffer_createFromHandle_t fp_AHardwareBuffer_createFromHandle = nullptr;
+static AHardwareBuffer_lockPlanes_t fp_AHardwareBuffer_lockPlanes = nullptr;
+static AHardwareBuffer_unlock_t fp_AHardwareBuffer_unlock = nullptr;
 
 // 线程安全初始化机制
 static std::once_flag sInitFlag;
@@ -132,6 +146,12 @@ static void initNativeWindowWrapperImpl() {
         dlsym(sNativeWindowHandle, "ANativeWindow_getWidth"));
     fp_ANativeWindow_getHeight = reinterpret_cast<ANativeWindow_getHeight_t>(
         dlsym(sNativeWindowHandle, "ANativeWindow_getHeight"));
+    fp_AHardwareBuffer_createFromHandle = reinterpret_cast<AHardwareBuffer_createFromHandle_t>(
+        dlsym(sNativeWindowHandle, "AHardwareBuffer_createFromHandle"));
+    fp_AHardwareBuffer_lockPlanes = reinterpret_cast<AHardwareBuffer_lockPlanes_t>(
+        dlsym(sNativeWindowHandle, "AHardwareBuffer_lockPlanes"));
+    fp_AHardwareBuffer_unlock = reinterpret_cast<AHardwareBuffer_unlock_t>(
+        dlsym(sNativeWindowHandle, "AHardwareBuffer_unlock"));
     
     // 检查关键函数是否解析成功
     if (!fp_ANativeWindowBuffer_getHardwareBuffer || !fp_AHardwareBuffer_acquire ||
@@ -163,7 +183,8 @@ static T getFunctionPointer(T* funcPtr, const char* funcName) {
     if (fp_##func) { \
         return fp_##func(__VA_ARGS__); \
     } \
-    ALOGW("%s: no implementation available", #func);
+    ALOGW("%s: no implementation available", #func); \
+    return 0;
 
 #define SAFE_CALL_VOID(func, ...) \
     ensureInitialized(); \
@@ -172,6 +193,14 @@ static T getFunctionPointer(T* funcPtr, const char* funcName) {
         return; \
     } \
     ALOGW("%s: no implementation available", #func);
+
+#define SAFE_CALL_ERRNO(func, ...) \
+    ensureInitialized(); \
+    if (fp_##func) { \
+        return fp_##func(__VA_ARGS__); \
+    } \
+    ALOGW("%s: no implementation available", #func); \
+    return -ENOSYS;
 
 extern "C" {
 
@@ -199,7 +228,7 @@ void AHardwareBuffer_describe(const AHardwareBuffer* buffer, AHardwareBuffer_Des
 int AHardwareBuffer_allocate(const AHardwareBuffer_Desc* desc, AHardwareBuffer** outBuffer) {
     //printf("AHardwareBuffer_allocate called with desc=%p, outBuffer=%p\n", desc, outBuffer);
     SAFE_CALL(AHardwareBuffer_allocate, desc, outBuffer);
-    return 0;
+    return -ENOMEM;
 }
 
 const native_handle_t* AHardwareBuffer_getNativeHandle(const AHardwareBuffer* buffer) {
@@ -239,19 +268,19 @@ int ANativeWindow_query(const ANativeWindow* window, ANativeWindowQuery query, i
 int ANativeWindow_dequeueBuffer(ANativeWindow* window, ANativeWindowBuffer** buffer, int* fenceFd) {
     //printf("ANativeWindow_dequeueBuffer called with window=%p, buffer=%p, fenceFd=%p\n", window, buffer, fenceFd);
     SAFE_CALL(ANativeWindow_dequeueBuffer, window, buffer, fenceFd);
-    return 0;
+    return -EBUSY;
 }
 
 int ANativeWindow_queueBuffer(ANativeWindow* window, ANativeWindowBuffer* buffer, int fenceFd) {
     //printf("ANativeWindow_queueBuffer called with window=%p, buffer=%p, fenceFd=%d\n", window, buffer, fenceFd);
     SAFE_CALL(ANativeWindow_queueBuffer, window, buffer, fenceFd);
-    return 0;
+    return -EINVAL;
 }
 
 int ANativeWindow_cancelBuffer(ANativeWindow* window, ANativeWindowBuffer* buffer, int fenceFd) {
     //printf("ANativeWindow_cancelBuffer called with window=%p, buffer=%p, fenceFd=%d\n", window, buffer, fenceFd);
     SAFE_CALL(ANativeWindow_cancelBuffer, window, buffer, fenceFd);
-    return 0;
+    return -EINVAL;
 }
 
 int ANativeWindow_setUsage(ANativeWindow* window, uint64_t usage) {
@@ -276,6 +305,30 @@ int32_t ANativeWindow_getHeight(ANativeWindow* window) {
     //printf("ANativeWindow_getHeight called with window=%p\n", window);
     SAFE_CALL(ANativeWindow_getHeight, window);
     return 0;
+}
+
+int AHardwareBuffer_createFromHandle(const AHardwareBuffer_Desc* desc,
+                                      const native_handle_t* handle,
+                                      uint32_t method,
+                                      AHardwareBuffer** outBuffer) {
+    //printf("AHardwareBuffer_createFromHandle called with desc=%p, handle=%p, method=%u, outBuffer=%p\n",
+    //       desc, handle, method, outBuffer);
+    SAFE_CALL_ERRNO(AHardwareBuffer_createFromHandle, desc, handle, method, outBuffer);
+}
+
+int AHardwareBuffer_lockPlanes(AHardwareBuffer* buffer,
+                                uint64_t usage,
+                                int32_t fence,
+                                const ARect* rect,
+                                AHardwareBuffer_Planes* outPlanes) {
+    //printf("AHardwareBuffer_lockPlanes called with buffer=%p, usage=%llu, fence=%d, rect=%p, outPlanes=%p\n",
+    //       buffer, (unsigned long long)usage, fence, rect, outPlanes);
+    SAFE_CALL_ERRNO(AHardwareBuffer_lockPlanes, buffer, usage, fence, rect, outPlanes);
+}
+
+int AHardwareBuffer_unlock(AHardwareBuffer* buffer, int32_t* fence) {
+    //printf("AHardwareBuffer_unlock called with buffer=%p, fence=%p\n", buffer, fence);
+    SAFE_CALL_ERRNO(AHardwareBuffer_unlock, buffer, fence);
 }
 
 } // extern "C"
