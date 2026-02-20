@@ -189,7 +189,6 @@ void Queue::garbageCollect()
 	}
 }
 
-#ifndef __ANDROID__
 VkResult Queue::present(const VkPresentInfoKHR *presentInfo)
 {
 	// This is a hack to deal with screen tearing for now.
@@ -239,7 +238,6 @@ VkResult Queue::present(const VkPresentInfoKHR *presentInfo)
 
 	return commandResult;
 }
-#endif
 
 void Queue::beginDebugUtilsLabel(const VkDebugUtilsLabelEXT *pLabelInfo)
 {
