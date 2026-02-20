@@ -53,9 +53,7 @@ public:
 
 	VkResult submit(uint32_t submitCount, SubmitInfo *pSubmits, Fence *fence);
 	VkResult waitIdle();
-#ifndef __ANDROID__
 	VkResult present(const VkPresentInfoKHR *presentInfo);
-#endif
 
 	void beginDebugUtilsLabel(const VkDebugUtilsLabelEXT *pLabelInfo);
 	void endDebugUtilsLabel();
