@@ -4746,7 +4746,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateHeadlessSurfaceEXT(VkInstance instance, c
 	return vk::HeadlessSurfaceKHR::Create(pAllocator, pCreateInfo, pSurface);
 }
 
-#ifndef __ANDROID__
 VKAPI_ATTR void VKAPI_CALL vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks *pAllocator)
 {
 	TRACE("(VkInstance instance = %p, VkSurfaceKHR surface = %p, const VkAllocationCallbacks* pAllocator = %p)",
@@ -4977,8 +4976,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDevicePresentRectanglesKHR(VkPhysica
 
 	return vk::Cast(surface)->getPresentRectangles(pRectCount, pRects);
 }
-
-#endif  // ! __ANDROID__
 
 #ifdef __ANDROID__
 
