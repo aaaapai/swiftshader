@@ -273,12 +273,12 @@ global:
 	vkQueueSubmit2;
 	vkSetPrivateData;
 
-    vkQueueSignalReleaseImageANDROID
-    vkAcquireImageANDROID
-    vkGetSwapchainGrallocUsageANDROID
-    vkGetSwapchainGrallocUsage2ANDROID
-    vkGetAndroidHardwareBufferPropertiesANDROID
-    vkGetMemoryAndroidHardwareBufferANDROID
+    vkQueueSignalReleaseImageANDROID;
+    vkAcquireImageANDROID;
+    vkGetSwapchainGrallocUsageANDROID;
+    vkGetSwapchainGrallocUsage2ANDROID;
+    vkGetAndroidHardwareBufferPropertiesANDROID;
+    vkGetMemoryAndroidHardwareBufferANDROID;
 
     HMI;
 local:
