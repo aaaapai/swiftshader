@@ -22,7 +22,8 @@
 #include "VkMemory.hpp"
 #include "VkStringify.hpp"
 
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
+#define SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD 1
+#if defined(SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD)
 
 // Helper struct which reads the parsed allocation info and
 // extracts relevant information related to the handle type
@@ -68,13 +69,11 @@ struct OpaqueFdAllocateInfo
 #	endif
 #endif
 
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 #	if defined(__ANDROID__)
 #		include "VkDeviceMemoryExternalAndroid.hpp"
 #	else
 #		error "Missing VK_ANDROID_external_memory_android_hardware_buffer implementation for this platform!"
 #	endif
-#endif
 
 #if VK_USE_PLATFORM_FUCHSIA
 #	include "VkDeviceMemoryExternalFuchsia.hpp"
@@ -115,18 +114,14 @@ VkResult DeviceMemory::Allocate(const VkAllocationCallbacks *pAllocator, const V
 	}
 	allocateInfo.allocationSize += 15;
 
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	if(AHardwareBufferExternalMemory::SupportsAllocateInfo(extendedAllocationInfo))
 	{
 		return AHardwareBufferExternalMemory::Create(pAllocator, &allocateInfo, pMemory, extendedAllocationInfo, device);
 	}
-#endif
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 	if(OpaqueFdExternalMemory::SupportsAllocateInfo(extendedAllocationInfo))
 	{
 		return OpaqueFdExternalMemory::Create(pAllocator, &allocateInfo, pMemory, extendedAllocationInfo, device);
 	}
-#endif
 #if VK_USE_PLATFORM_FUCHSIA
 	if(zircon::VmoExternalMemory::supportsAllocateInfo(extendedAllocationInfo))
 	{
@@ -152,10 +147,8 @@ DeviceMemory::DeviceMemory(const VkMemoryAllocateInfo *pAllocateInfo, const Devi
 
 void DeviceMemory::destroy(const VkAllocationCallbacks *pAllocator)
 {
-#ifdef SWIFTSHADER_DEVICE_MEMORY_REPORT
 	VkDeviceMemoryReportEventTypeEXT eventType = isImport() ? VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_UNIMPORT_EXT : VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_FREE_EXT;
 	device->emitDeviceMemoryReport(eventType, getMemoryObjectId(), 0 /* size */, VK_OBJECT_TYPE_DEVICE_MEMORY, (uint64_t)(void *)VkDeviceMemory(*this));
-#endif  // SWIFTSHADER_DEVICE_MEMORY_REPORT
 
 	if(buffer)
 	{
@@ -180,15 +173,12 @@ VkResult DeviceMemory::ParseAllocationInfo(const VkMemoryAllocateInfo *pAllocate
 			// This can safely be ignored on most platforms, as the Vulkan spec mentions:
 			// "If the pNext chain includes a VkMemoryDedicatedAllocateInfo structure, then that structure
 			//  includes a handle of the sole buffer or image resource that the memory *can* be bound to."
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 			extendedAllocationInfo->dedicatedAllocateInfo = reinterpret_cast<const VkMemoryDedicatedAllocateInfo *>(allocationInfo);
-#endif
 			break;
 		case VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO:
 			// This extension controls on which physical devices the memory gets allocated.
 			// SwiftShader only has a single physical device, so this extension does nothing in this case.
 			break;
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 		case VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR:
 			extendedAllocationInfo->importMemoryFdInfo = reinterpret_cast<const VkImportMemoryFdInfoKHR *>(allocationInfo);
 			if(extendedAllocationInfo->importMemoryFdInfo->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT)
@@ -197,19 +187,14 @@ VkResult DeviceMemory::ParseAllocationInfo(const VkMemoryAllocateInfo *pAllocate
 				return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 			}
 			break;
-#endif  // SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 		case VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO:
 			extendedAllocationInfo->exportMemoryAllocateInfo = reinterpret_cast<const VkExportMemoryAllocateInfo *>(allocationInfo);
 			switch(extendedAllocationInfo->exportMemoryAllocateInfo->handleTypes)
 			{
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 			case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
 				break;
-#endif
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 			case VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID:
 				break;
-#endif
 #if VK_USE_PLATFORM_FUCHSIA
 			case VK_EXTERNAL_MEMORY_HANDLE_TYPE_ZIRCON_VMO_BIT_FUCHSIA:
 				break;
@@ -219,11 +204,9 @@ VkResult DeviceMemory::ParseAllocationInfo(const VkMemoryAllocateInfo *pAllocate
 				return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 			}
 			break;
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 		case VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID:
 			extendedAllocationInfo->importAndroidHardwareBufferInfo = reinterpret_cast<const VkImportAndroidHardwareBufferInfoANDROID *>(allocationInfo);
 			break;
-#endif  // SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 		case VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT:
 			extendedAllocationInfo->importMemoryHostPointerInfo = reinterpret_cast<const VkImportMemoryHostPointerInfoEXT *>(allocationInfo);
 			if((extendedAllocationInfo->importMemoryHostPointerInfo->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT) &&
@@ -262,9 +245,7 @@ VkResult DeviceMemory::allocate()
 {
 	if(allocationSize > MAX_MEMORY_ALLOCATION_SIZE)
 	{
-#ifdef SWIFTSHADER_DEVICE_MEMORY_REPORT
 		device->emitDeviceMemoryReport(VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_ALLOCATION_FAILED_EXT, 0 /* memoryObjectId */, allocationSize, VK_OBJECT_TYPE_DEVICE_MEMORY, 0 /* objectHandle */);
-#endif  // SWIFTSHADER_DEVICE_MEMORY_REPORT
 
 		return VK_ERROR_OUT_OF_DEVICE_MEMORY;
 	}
@@ -275,7 +256,6 @@ VkResult DeviceMemory::allocate()
 		result = allocateBuffer();
 	}
 
-#ifdef SWIFTSHADER_DEVICE_MEMORY_REPORT
 	if(result == VK_SUCCESS)
 	{
 		VkDeviceMemoryReportEventTypeEXT eventType = isImport() ? VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_IMPORT_EXT : VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_ALLOCATE_EXT;
@@ -285,7 +265,6 @@ VkResult DeviceMemory::allocate()
 	{
 		device->emitDeviceMemoryReport(VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_ALLOCATION_FAILED_EXT, 0 /* memoryObjectId */, allocationSize, VK_OBJECT_TYPE_DEVICE_MEMORY, 0 /* objectHandle */);
 	}
-#endif  // SWIFTSHADER_DEVICE_MEMORY_REPORT
 
 	return result;
 }
@@ -364,14 +343,11 @@ VkExternalMemoryHandleTypeFlagBits DeviceMemory::getFlagBit() const
 	return typeFlagBit;
 }
 
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD
 VkResult DeviceMemory::exportFd(int *pFd) const
 {
 	return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 }
-#endif
 
-#ifdef SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 VkResult DeviceMemory::exportAndroidHardwareBuffer(struct AHardwareBuffer **pAhb) const
 {
 	return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -381,7 +357,6 @@ VkResult DeviceMemory::GetAndroidHardwareBufferProperties(VkDevice &ahbDevice, c
 {
 	return AHardwareBufferExternalMemory::GetAndroidHardwareBufferProperties(ahbDevice, buffer, pProperties);
 }
-#endif
 
 #if VK_USE_PLATFORM_FUCHSIA
 VkResult DeviceMemory::exportHandle(zx_handle_t *pHandle) const
