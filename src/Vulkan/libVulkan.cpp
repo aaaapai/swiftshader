@@ -4739,22 +4739,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateAndroidSurfaceKHR(VkInstance instance, co
 
     return vk::AndroidSurfaceKHR::Create(pAllocator, pCreateInfo, pSurface);
 }
-
-VKAPI_ATTR VkResult VKAPI_CALL vkGetAndroidHardwareBufferPropertiesANDROID(VkDevice device, const struct AHardwareBuffer* buffer, VkAndroidHardwareBufferPropertiesANDROID* pProperties)
-{
-    TRACE("(VkDevice device = %p, AHardwareBuffer* buffer = %p, VkAndroidHardwareBufferPropertiesANDROID* pProperties = %p)",
-          device, buffer, pProperties);
-
-    return vk::Cast(device)->getAndroidHardwareBufferProperties(buffer, pProperties);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL vkGetMemoryAndroidHardwareBufferANDROID(VkDevice device, const VkMemoryGetAndroidHardwareBufferInfoANDROID* pInfo, struct AHardwareBuffer** pBuffer)
-{
-    TRACE("(VkDevice device = %p, VkMemoryGetAndroidHardwareBufferInfoANDROID* pInfo = %p, AHardwareBuffer** pBuffer = %p)",
-          device, pInfo, pBuffer);
-
-    return vk::Cast(device)->getMemoryAndroidHardwareBuffer(pInfo, pBuffer);
-}
 #endif // VK_USE_PLATFORM_ANDROID_KHR
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateHeadlessSurfaceEXT(VkInstance instance, const VkHeadlessSurfaceCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSurfaceKHR *pSurface)
