@@ -66,12 +66,12 @@ public:
     VkResult getSurfaceFormats(const void *pSurfaceInfoPNext,
                                uint32_t *pSurfaceFormatCount,
                                VkSurfaceFormatKHR *pSurfaceFormats,
-                               void *pSurfaceFormatsPNext) const override;
+                               void *pSurfaceFormatsPNext) const;
 
     VkResult getPresentModes(const void *pSurfaceInfoPNext,
                              uint32_t *pPresentModeCount,
                              VkPresentModeKHR *pPresentModes,
-                             void *pPresentModesPNext) const override;
+                             void *pPresentModesPNext) const;
 
 private:
     int getNativeWindowFormat(VkFormat format) const;
