@@ -4,7 +4,6 @@
 
 #include "AndroidSurfaceKHR.hpp"
 
-#include "Vulkan/VkDeviceMemory.hpp"
 #include "Vulkan/VkImage.hpp"
 #include "System/Debug.hpp"
 
@@ -92,67 +91,6 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void* pSurfaceInfoPNext
     return VK_SUCCESS;
 }
 
-VkResult AndroidSurfaceKHR::getSurfaceFormats(const void* pSurfaceInfoPNext,
-                                              uint32_t* pSurfaceFormatCount,
-                                              VkSurfaceFormatKHR* pSurfaceFormats,
-                                              void* pSurfaceFormatsPNext) const
-{
-    // Android 通常支持以下格式
-    static const VkSurfaceFormatKHR formats[] = {
-        { VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
-        { VK_FORMAT_R8G8B8A8_SRGB,   VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
-        { VK_FORMAT_R5G6B5_UNORM_PACK16, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
-        { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
-        { VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
-    };
-    const uint32_t formatCount = sizeof(formats) / sizeof(formats[0]);
-
-    if (pSurfaceFormats == nullptr)
-    {
-        *pSurfaceFormatCount = formatCount;
-        LOGI("getSurfaceFormats: returning count = %u", formatCount);
-        return VK_SUCCESS;
-    }
-
-    uint32_t toCopy = std::min(*pSurfaceFormatCount, formatCount);
-    for (uint32_t i = 0; i < toCopy; ++i)
-    {
-        pSurfaceFormats[i] = formats[i];
-    }
-    *pSurfaceFormatCount = toCopy;
-    LOGI("getSurfaceFormats: copied %u formats", toCopy);
-    return VK_SUCCESS;
-}
-
-VkResult AndroidSurfaceKHR::getPresentModes(const void* pSurfaceInfoPNext,
-                                            uint32_t* pPresentModeCount,
-                                            VkPresentModeKHR* pPresentModes,
-                                            void* pPresentModesPNext) const
-{
-    static const VkPresentModeKHR modes[] = {
-        VK_PRESENT_MODE_FIFO_KHR,
-        VK_PRESENT_MODE_MAILBOX_KHR,
-        VK_PRESENT_MODE_IMMEDIATE_KHR,
-    };
-    const uint32_t modeCount = sizeof(modes) / sizeof(modes[0]);
-
-    if (pPresentModes == nullptr)
-    {
-        *pPresentModeCount = modeCount;
-        LOGI("getPresentModes: returning count = %u", modeCount);
-        return VK_SUCCESS;
-    }
-
-    uint32_t toCopy = std::min(*pPresentModeCount, modeCount);
-    for (uint32_t i = 0; i < toCopy; ++i)
-    {
-        pPresentModes[i] = modes[i];
-    }
-    *pPresentModeCount = toCopy;
-    LOGI("getPresentModes: copied %u modes", toCopy);
-    return VK_SUCCESS;
-}
-
 void AndroidSurfaceKHR::attachImage(PresentImage* image)
 {
     if (!nativeWindow)
@@ -161,7 +99,6 @@ void AndroidSurfaceKHR::attachImage(PresentImage* image)
         return;
     }
 
-    // 使用头文件中定义的 AndroidImage 结构
     AndroidImage* androidImage = new AndroidImage();
     memset(androidImage, 0, sizeof(AndroidImage));
 
@@ -169,34 +106,11 @@ void AndroidSurfaceKHR::attachImage(PresentImage* image)
     androidImage->width = extent.width;
     androidImage->height = extent.height;
     androidImage->format = getNativeWindowFormat(image->getImage()->getFormat());
+    androidImage->locked = false;  // 初始未锁定，窗口操作延迟到 present
 
-    LOGI("attachImage: trying to set buffer geometry %dx%d, format %d",
-         extent.width, extent.height, androidImage->format);
-
-    int32_t err = ANativeWindow_setBuffersGeometry(nativeWindow, extent.width, extent.height, androidImage->format);
-    if (err != 0)
-    {
-        LOGE("ANativeWindow_setBuffersGeometry failed: %d", err);
-        delete androidImage;
-        return;
-    }
-
-    ANativeWindow_Buffer buffer;
-    err = ANativeWindow_lock(nativeWindow, &buffer, nullptr);
-    if (err != 0)
-    {
-        LOGE("ANativeWindow_lock failed: %d", err);
-        delete androidImage;
-        return;
-    }
-
-    androidImage->buffer = buffer;
-    androidImage->cpuAddr = static_cast<uint8_t*>(buffer.bits);
-    androidImage->stride = buffer.stride;
-    androidImage->locked = true;
-
+    // 仅保存图像信息，不操作窗口
     imageMap[image] = androidImage;
-    LOGI("attachImage: success, cpuAddr=%p, stride=%d", androidImage->cpuAddr, androidImage->stride);
+    LOGI("attachImage: saved image %p: %dx%d format %d", image, extent.width, extent.height, androidImage->format);
 }
 
 void AndroidSurfaceKHR::detachImage(PresentImage* image)
@@ -207,6 +121,7 @@ void AndroidSurfaceKHR::detachImage(PresentImage* image)
         AndroidImage* androidImage = it->second;
         LOGI("detachImage: image %p, locked=%d", image, androidImage->locked);
 
+        // 如果窗口仍被锁定，尝试解锁以防止资源泄漏
         if (androidImage->locked && nativeWindow)
         {
             ANativeWindow_unlockAndPost(nativeWindow);
@@ -215,7 +130,7 @@ void AndroidSurfaceKHR::detachImage(PresentImage* image)
 
         delete androidImage;
         imageMap.erase(it);
-        LOGI("detachImage: removed and deleted AndroidImage");
+        LOGI("detachImage: removed AndroidImage");
     }
     else
     {
@@ -233,41 +148,59 @@ VkResult AndroidSurfaceKHR::present(PresentImage* image)
     }
 
     AndroidImage* androidImage = it->second;
-    if (!androidImage->cpuAddr || !androidImage->locked)
+    const VkExtent3D& extent = image->getImage()->getExtent();
+
+    // 1. 配置窗口缓冲区几何（格式和尺寸）
+    int32_t err = ANativeWindow_setBuffersGeometry(nativeWindow, extent.width, extent.height, androidImage->format);
+    if (err != 0)
     {
-        LOGE("present: androidImage buffer not ready (cpuAddr=%p, locked=%d)",
-             androidImage->cpuAddr, androidImage->locked);
+        LOGE("present: ANativeWindow_setBuffersGeometry failed: %d", err);
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
-    const VkExtent3D& extent = image->getImage()->getExtent();
-    int srcRowPitch = image->getImage()->rowPitchBytes(VK_IMAGE_ASPECT_COLOR_BIT, 0);
-    int dstRowPitch = androidImage->stride * 4; // 假设目标格式为 RGBA_8888
+    // 2. 锁定窗口以获取 CPU 访问权限
+    ANativeWindow_Buffer buffer;
+    err = ANativeWindow_lock(nativeWindow, &buffer, nullptr);
+    if (err != 0)
+    {
+        LOGE("present: ANativeWindow_lock failed: %d", err);
+        return VK_ERROR_SURFACE_LOST_KHR;
+    }
+    androidImage->locked = true;
+    androidImage->cpuAddr = static_cast<uint8_t*>(buffer.bits);
+    androidImage->stride = buffer.stride;
 
+    // 3. 拷贝图像数据到窗口缓冲区（假设目标格式为 RGBA_8888，每像素4字节）
+    int srcRowPitch = image->getImage()->rowPitchBytes(VK_IMAGE_ASPECT_COLOR_BIT, 0);
+    int dstRowPitch = androidImage->stride * 4;
     VkImageSubresource subresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
     uint8_t* src = static_cast<uint8_t*>(image->getImage()->getTexelPointer(VkOffset3D{0,0,0}, subresource));
     if (!src)
     {
         LOGE("present: source image texel pointer is null");
+        ANativeWindow_unlockAndPost(nativeWindow);  // 解锁以避免死锁
+        androidImage->locked = false;
         return VK_ERROR_MEMORY_MAP_FAILED;
     }
 
     uint8_t* dst = androidImage->cpuAddr;
     LOGI("present: copying %dx%d, srcRowPitch=%d, dstRowPitch=%d", extent.width, extent.height, srcRowPitch, dstRowPitch);
-
     for (uint32_t y = 0; y < extent.height; ++y)
     {
         memcpy(dst + y * dstRowPitch, src + y * srcRowPitch, extent.width * 4);
     }
 
-    int err = ANativeWindow_unlockAndPost(nativeWindow);
+    // 4. 解锁并提交缓冲区到屏幕
+    err = ANativeWindow_unlockAndPost(nativeWindow);
     if (err != 0)
     {
-        LOGE("ANativeWindow_unlockAndPost failed: %d", err);
+        LOGE("present: ANativeWindow_unlockAndPost failed: %d", err);
+        androidImage->locked = false;
         return VK_ERROR_SURFACE_LOST_KHR;
     }
     androidImage->locked = false;
 
+    // 5. 清理资源（此图像不再需要）
     delete androidImage;
     imageMap.erase(it);
     LOGI("present: success");
