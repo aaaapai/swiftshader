@@ -1,16 +1,6 @@
 // Copyright 2020 The SwiftShader Authors. All Rights Reserved.
-//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
 #include "AndroidSurfaceKHR.hpp"
 
@@ -18,57 +8,100 @@
 #include "Vulkan/VkImage.hpp"
 #include "System/Debug.hpp"
 
-#include <string.h>
+#include <android/native_window.h>
+#include <cstdio>
+#include <cstring>
 #include <unistd.h>
+
+// 使用标准错误输出打印调试信息，确保在控制台可见
+#define LOGI(fmt, ...) do { fprintf(stderr, "INFO: " fmt "\n", ##__VA_ARGS__); } while(0)
+#define LOGE(fmt, ...) do { fprintf(stderr, "ERROR: " fmt "\n", ##__VA_ARGS__); } while(0)
+
+// 确保 ANativeWindow 格式常量可用（若未定义则使用 AHardwareBuffer 格式）
+#ifndef WINDOW_FORMAT_RGBA_8888
+#define WINDOW_FORMAT_RGBA_8888 AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM
+#endif
+#ifndef WINDOW_FORMAT_RGB_565
+#define WINDOW_FORMAT_RGB_565 AHARDWAREBUFFER_FORMAT_R5G6B5_UNORM
+#endif
+#ifndef WINDOW_FORMAT_RGBA_FP16
+#define WINDOW_FORMAT_RGBA_FP16 AHARDWAREBUFFER_FORMAT_R16G16B16A16_FLOAT
+#endif
+#ifndef WINDOW_FORMAT_RGBA_1010102
+#define WINDOW_FORMAT_RGBA_1010102 AHARDWAREBUFFER_FORMAT_R10G10B10A2_UNORM
+#endif
 
 namespace vk {
 
+// 内部结构：封装 Android 窗口缓冲区信息
+struct AndroidImage
+{
+    ANativeWindow_Buffer buffer;
+    uint8_t* cpuAddr;
+    int32_t stride;
+    uint32_t width;
+    uint32_t height;
+    int32_t format;
+    bool locked;
+};
+
 bool AndroidSurfaceKHR::isSupported()
 {
+    LOGI("isSupported() = true");
     return true;
 }
 
-AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem)
+AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR* pCreateInfo, void* mem)
     : window(pCreateInfo->window)
     , nativeWindow(nullptr)
 {
+    LOGI("AndroidSurfaceKHR constructor: pCreateInfo->window = %p", window);
     if (window)
     {
         nativeWindow = window;
         ANativeWindow_acquire(nativeWindow);
+        LOGI("Acquired nativeWindow = %p", nativeWindow);
+    }
+    else
+    {
+        LOGE("pCreateInfo->window is NULL!");
     }
 }
 
-void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
+void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks* pAllocator)
 {
+    LOGI("destroySurface: nativeWindow = %p", nativeWindow);
     if (nativeWindow)
     {
         ANativeWindow_release(nativeWindow);
         nativeWindow = nullptr;
+        LOGI("Released nativeWindow");
     }
 }
 
-size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo)
+size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR* pCreateInfo)
 {
-    return 0;
+    LOGI("ComputeRequiredAllocationSize = 0");
+    return 0; // 该类无额外动态内存
 }
 
-VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext,
-                                                  VkSurfaceCapabilitiesKHR *pSurfaceCapabilities,
-                                                  void *pSurfaceCapabilitiesPNext) const
+VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void* pSurfaceInfoPNext,
+                                                    VkSurfaceCapabilitiesKHR* pSurfaceCapabilities,
+                                                    void* pSurfaceCapabilitiesPNext) const
 {
+    if (!nativeWindow)
+    {
+        LOGE("getSurfaceCapabilities: nativeWindow is null");
+        return VK_ERROR_SURFACE_LOST_KHR;
+    }
+
     int32_t width = ANativeWindow_getWidth(nativeWindow);
     int32_t height = ANativeWindow_getHeight(nativeWindow);
+    LOGI("getSurfaceCapabilities: window size = %dx%d", width, height);
 
-    pSurfaceCapabilities->currentExtent = {
-        static_cast<uint32_t>(width),
-        static_cast<uint32_t>(height)
-    };
+    pSurfaceCapabilities->currentExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
     pSurfaceCapabilities->minImageExtent = { 1, 1 };
-    pSurfaceCapabilities->maxImageExtent = {
-        static_cast<uint32_t>(width),
-        static_cast<uint32_t>(height)
-    };
+    pSurfaceCapabilities->maxImageExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
 
     // Android 典型配置：最小2个缓冲区（双缓冲），最大3个（三缓冲）
     pSurfaceCapabilities->minImageCount = 2;
@@ -89,25 +122,102 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
     return VK_SUCCESS;
 }
 
-void AndroidSurfaceKHR::attachImage(PresentImage *image)
+VkResult AndroidSurfaceKHR::getSurfaceFormats(const void* pSurfaceInfoPNext,
+                                              uint32_t* pSurfaceFormatCount,
+                                              VkSurfaceFormatKHR* pSurfaceFormats,
+                                              void* pSurfaceFormatsPNext) const
 {
-    if (!nativeWindow) return;
+    // Android 通常支持以下格式
+    static const VkSurfaceFormatKHR formats[] = {
+        { VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+        { VK_FORMAT_R8G8B8A8_SRGB,   VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+        { VK_FORMAT_R5G6B5_UNORM_PACK16, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+        { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+        { VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+    };
+    const uint32_t formatCount = sizeof(formats) / sizeof(formats[0]);
 
-    AndroidImage *androidImage = new AndroidImage();
+    if (pSurfaceFormats == nullptr)
+    {
+        *pSurfaceFormatCount = formatCount;
+        LOGI("getSurfaceFormats: returning count = %u", formatCount);
+        return VK_SUCCESS;
+    }
+
+    uint32_t toCopy = std::min(*pSurfaceFormatCount, formatCount);
+    for (uint32_t i = 0; i < toCopy; ++i)
+    {
+        pSurfaceFormats[i] = formats[i];
+    }
+    *pSurfaceFormatCount = toCopy;
+    LOGI("getSurfaceFormats: copied %u formats", toCopy);
+    return VK_SUCCESS;
+}
+
+VkResult AndroidSurfaceKHR::getPresentModes(const void* pSurfaceInfoPNext,
+                                            uint32_t* pPresentModeCount,
+                                            VkPresentModeKHR* pPresentModes,
+                                            void* pPresentModesPNext) const
+{
+    // Android 通常支持 FIFO（vsync）和 MAILBOX（三重缓冲）
+    static const VkPresentModeKHR modes[] = {
+        VK_PRESENT_MODE_FIFO_KHR,
+        VK_PRESENT_MODE_MAILBOX_KHR,
+        VK_PRESENT_MODE_IMMEDIATE_KHR,
+    };
+    const uint32_t modeCount = sizeof(modes) / sizeof(modes[0]);
+
+    if (pPresentModes == nullptr)
+    {
+        *pPresentModeCount = modeCount;
+        LOGI("getPresentModes: returning count = %u", modeCount);
+        return VK_SUCCESS;
+    }
+
+    uint32_t toCopy = std::min(*pPresentModeCount, modeCount);
+    for (uint32_t i = 0; i < toCopy; ++i)
+    {
+        pPresentModes[i] = modes[i];
+    }
+    *pPresentModeCount = toCopy;
+    LOGI("getPresentModes: copied %u modes", toCopy);
+    return VK_SUCCESS;
+}
+
+void AndroidSurfaceKHR::attachImage(PresentImage* image)
+{
+    if (!nativeWindow)
+    {
+        LOGE("attachImage: nativeWindow is null");
+        return;
+    }
+
+    AndroidImage* androidImage = new AndroidImage();
     memset(androidImage, 0, sizeof(AndroidImage));
 
-    const VkExtent3D &extent = image->getImage()->getExtent();
+    const VkExtent3D& extent = image->getImage()->getExtent();
     androidImage->width = extent.width;
     androidImage->height = extent.height;
     androidImage->format = getNativeWindowFormat(image->getImage()->getFormat());
 
-    // 配置 native window 的缓冲区几何属性
-    ANativeWindow_setBuffersGeometry(nativeWindow, extent.width, extent.height, androidImage->format);
+    LOGI("attachImage: trying to set buffer geometry %dx%d, format %d",
+         extent.width, extent.height, androidImage->format);
 
-    // 锁定窗口表面，获取 CPU 可访问的缓冲区
-    ANativeWindow_Buffer buffer;
-    if (ANativeWindow_lock(nativeWindow, &buffer, nullptr) != 0)
+    // 配置窗口缓冲区几何
+    int32_t err = ANativeWindow_setBuffersGeometry(nativeWindow, extent.width, extent.height, androidImage->format);
+    if (err != 0)
     {
+        LOGE("ANativeWindow_setBuffersGeometry failed: %d", err);
+        delete androidImage;
+        return;
+    }
+
+    // 锁定窗口表面获取 CPU 访问权限
+    ANativeWindow_Buffer buffer;
+    err = ANativeWindow_lock(nativeWindow, &buffer, nullptr);
+    if (err != 0)
+    {
+        LOGE("ANativeWindow_lock failed: %d", err);
         delete androidImage;
         return;
     }
@@ -118,64 +228,85 @@ void AndroidSurfaceKHR::attachImage(PresentImage *image)
     androidImage->locked = true;
 
     imageMap[image] = androidImage;
+    LOGI("attachImage: success, cpuAddr=%p, stride=%d", androidImage->cpuAddr, androidImage->stride);
 }
 
-void AndroidSurfaceKHR::detachImage(PresentImage *image)
+void AndroidSurfaceKHR::detachImage(PresentImage* image)
 {
     auto it = imageMap.find(image);
     if (it != imageMap.end())
     {
-        AndroidImage *androidImage = it->second;
+        AndroidImage* androidImage = it->second;
+        LOGI("detachImage: image %p, locked=%d", image, androidImage->locked);
 
-        // 如果缓冲区仍处于锁定状态，解锁并取消提交
+        // 如果缓冲区仍被锁定，尝试解锁（但不提交）
         if (androidImage->locked && nativeWindow)
         {
-            ANativeWindow_unlockAndPost(nativeWindow); // 实际会提交，但这里可能未准备好，用 cancel 更好？
-            // 更好的做法是直接取消，但 ANativeWindow 没有直接的 cancel 接口，
-            // unlockAndPost 会提交，可能导致显示不完整的内容，但 detach 通常发生在销毁时，可以接受。
+            // 注意：ANativeWindow_unlockAndPost 会提交并解锁，但此时我们只想放弃缓冲区
+            // 更好的做法是重新锁定再放弃？这里简单解锁并记录日志
+            ANativeWindow_unlockAndPost(nativeWindow); // 可能导致不完整内容显示，但 detach 通常发生在销毁时
+            LOGI("detachImage: unlocked window");
         }
 
         delete androidImage;
         imageMap.erase(it);
+        LOGI("detachImage: removed and deleted AndroidImage");
+    }
+    else
+    {
+        LOGE("detachImage: image %p not found in map", image);
     }
 }
 
-VkResult AndroidSurfaceKHR::present(PresentImage *image)
+VkResult AndroidSurfaceKHR::present(PresentImage* image)
 {
     auto it = imageMap.find(image);
     if (it == imageMap.end() || !nativeWindow)
     {
+        LOGE("present: image not found or nativeWindow null");
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
-    AndroidImage *androidImage = it->second;
-
-    // 复制图像数据到窗口缓冲区
-    if (androidImage->cpuAddr && androidImage->locked)
+    AndroidImage* androidImage = it->second;
+    if (!androidImage->cpuAddr || !androidImage->locked)
     {
-        const VkExtent3D &extent = image->getImage()->getExtent();
-        int srcRowPitch = image->getImage()->rowPitchBytes(VK_IMAGE_ASPECT_COLOR_BIT, 0);
-        int dstRowPitch = androidImage->stride * 4; // 假设 RGBA_8888 格式，每像素4字节
-
-        // 获取源图像数据指针
-        VkImageSubresource subresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
-        uint8_t* src = static_cast<uint8_t*>(image->getImage()->getTexelPointer(VkOffset3D{0,0,0}, subresource));
-        uint8_t* dst = androidImage->cpuAddr;
-
-        for (uint32_t y = 0; y < extent.height; ++y)
-        {
-            memcpy(dst + y * dstRowPitch, src + y * srcRowPitch, extent.width * 4);
-        }
-
-        // 解锁并提交缓冲区到屏幕
-        ANativeWindow_unlockAndPost(nativeWindow);
-        androidImage->locked = false;
+        LOGE("present: androidImage buffer not ready (cpuAddr=%p, locked=%d)",
+             androidImage->cpuAddr, androidImage->locked);
+        return VK_ERROR_SURFACE_LOST_KHR;
     }
 
-    // 移除并释放资源
+    const VkExtent3D& extent = image->getImage()->getExtent();
+    int srcRowPitch = image->getImage()->rowPitchBytes(VK_IMAGE_ASPECT_COLOR_BIT, 0);
+    int dstRowPitch = androidImage->stride * 4; // 假设目标格式为 RGBA_8888 (每像素4字节)
+
+    // 获取源图像数据指针
+    VkImageSubresource subresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
+    uint8_t* src = static_cast<uint8_t*>(image->getImage()->getTexelPointer(VkOffset3D{0,0,0}, subresource));
+    if (!src)
+    {
+        LOGE("present: source image texel pointer is null");
+        return VK_ERROR_MEMORY_MAP_FAILED;
+    }
+
+    uint8_t* dst = androidImage->cpuAddr;
+    LOGI("present: copying %dx%d, srcRowPitch=%d, dstRowPitch=%d", extent.width, extent.height, srcRowPitch, dstRowPitch);
+
+    for (uint32_t y = 0; y < extent.height; ++y)
+    {
+        memcpy(dst + y * dstRowPitch, src + y * srcRowPitch, extent.width * 4);
+    }
+
+    int err = ANativeWindow_unlockAndPost(nativeWindow);
+    if (err != 0)
+    {
+        LOGE("ANativeWindow_unlockAndPost failed: %d", err);
+        return VK_ERROR_SURFACE_LOST_KHR;
+    }
+    androidImage->locked = false;
+
     delete androidImage;
     imageMap.erase(it);
-
+    LOGI("present: success");
     return VK_SUCCESS;
 }
 
@@ -193,6 +324,7 @@ int AndroidSurfaceKHR::getNativeWindowFormat(VkFormat format) const
     case VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16:
         return WINDOW_FORMAT_RGBA_1010102;
     default:
+        LOGI("getNativeWindowFormat: unknown VkFormat %d, defaulting to RGBA_8888", format);
         return WINDOW_FORMAT_RGBA_8888;
     }
 }
