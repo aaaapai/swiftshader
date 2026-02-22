@@ -11,39 +11,14 @@
 #include <android/native_window.h>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>  // for std::min
 #include <unistd.h>
 
 // 使用标准错误输出打印调试信息，确保在控制台可见
 #define LOGI(fmt, ...) do { fprintf(stderr, "INFO: " fmt "\n", ##__VA_ARGS__); } while(0)
 #define LOGE(fmt, ...) do { fprintf(stderr, "ERROR: " fmt "\n", ##__VA_ARGS__); } while(0)
 
-// 确保 ANativeWindow 格式常量可用（若未定义则使用 AHardwareBuffer 格式）
-#ifndef WINDOW_FORMAT_RGBA_8888
-#define WINDOW_FORMAT_RGBA_8888 AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM
-#endif
-#ifndef WINDOW_FORMAT_RGB_565
-#define WINDOW_FORMAT_RGB_565 AHARDWAREBUFFER_FORMAT_R5G6B5_UNORM
-#endif
-#ifndef WINDOW_FORMAT_RGBA_FP16
-#define WINDOW_FORMAT_RGBA_FP16 AHARDWAREBUFFER_FORMAT_R16G16B16A16_FLOAT
-#endif
-#ifndef WINDOW_FORMAT_RGBA_1010102
-#define WINDOW_FORMAT_RGBA_1010102 AHARDWAREBUFFER_FORMAT_R10G10B10A2_UNORM
-#endif
-
 namespace vk {
-
-// 内部结构：封装 Android 窗口缓冲区信息
-struct AndroidImage
-{
-    ANativeWindow_Buffer buffer;
-    uint8_t* cpuAddr;
-    int32_t stride;
-    uint32_t width;
-    uint32_t height;
-    int32_t format;
-    bool locked;
-};
 
 bool AndroidSurfaceKHR::isSupported()
 {
@@ -82,7 +57,7 @@ void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks* pAllocator)
 size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR* pCreateInfo)
 {
     LOGI("ComputeRequiredAllocationSize = 0");
-    return 0; // 该类无额外动态内存
+    return 0;
 }
 
 VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void* pSurfaceInfoPNext,
@@ -102,20 +77,15 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void* pSurfaceInfoPNext
     pSurfaceCapabilities->currentExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
     pSurfaceCapabilities->minImageExtent = { 1, 1 };
     pSurfaceCapabilities->maxImageExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
-
-    // Android 典型配置：最小2个缓冲区（双缓冲），最大3个（三缓冲）
     pSurfaceCapabilities->minImageCount = 2;
     pSurfaceCapabilities->maxImageCount = 3;
-
     pSurfaceCapabilities->supportedCompositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     pSurfaceCapabilities->supportedTransforms = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     pSurfaceCapabilities->currentTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-
     pSurfaceCapabilities->supportedUsageFlags =
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
         VK_IMAGE_USAGE_TRANSFER_DST_BIT |
         VK_IMAGE_USAGE_SAMPLED_BIT;
-
     pSurfaceCapabilities->maxImageArrayLayers = 1;
 
     SetCommonSurfaceCapabilities(pSurfaceInfoPNext, pSurfaceCapabilities, pSurfaceCapabilitiesPNext);
@@ -159,7 +129,6 @@ VkResult AndroidSurfaceKHR::getPresentModes(const void* pSurfaceInfoPNext,
                                             VkPresentModeKHR* pPresentModes,
                                             void* pPresentModesPNext) const
 {
-    // Android 通常支持 FIFO（vsync）和 MAILBOX（三重缓冲）
     static const VkPresentModeKHR modes[] = {
         VK_PRESENT_MODE_FIFO_KHR,
         VK_PRESENT_MODE_MAILBOX_KHR,
@@ -192,6 +161,7 @@ void AndroidSurfaceKHR::attachImage(PresentImage* image)
         return;
     }
 
+    // 使用头文件中定义的 AndroidImage 结构
     AndroidImage* androidImage = new AndroidImage();
     memset(androidImage, 0, sizeof(AndroidImage));
 
@@ -203,7 +173,6 @@ void AndroidSurfaceKHR::attachImage(PresentImage* image)
     LOGI("attachImage: trying to set buffer geometry %dx%d, format %d",
          extent.width, extent.height, androidImage->format);
 
-    // 配置窗口缓冲区几何
     int32_t err = ANativeWindow_setBuffersGeometry(nativeWindow, extent.width, extent.height, androidImage->format);
     if (err != 0)
     {
@@ -212,7 +181,6 @@ void AndroidSurfaceKHR::attachImage(PresentImage* image)
         return;
     }
 
-    // 锁定窗口表面获取 CPU 访问权限
     ANativeWindow_Buffer buffer;
     err = ANativeWindow_lock(nativeWindow, &buffer, nullptr);
     if (err != 0)
@@ -239,12 +207,9 @@ void AndroidSurfaceKHR::detachImage(PresentImage* image)
         AndroidImage* androidImage = it->second;
         LOGI("detachImage: image %p, locked=%d", image, androidImage->locked);
 
-        // 如果缓冲区仍被锁定，尝试解锁（但不提交）
         if (androidImage->locked && nativeWindow)
         {
-            // 注意：ANativeWindow_unlockAndPost 会提交并解锁，但此时我们只想放弃缓冲区
-            // 更好的做法是重新锁定再放弃？这里简单解锁并记录日志
-            ANativeWindow_unlockAndPost(nativeWindow); // 可能导致不完整内容显示，但 detach 通常发生在销毁时
+            ANativeWindow_unlockAndPost(nativeWindow);
             LOGI("detachImage: unlocked window");
         }
 
@@ -277,9 +242,8 @@ VkResult AndroidSurfaceKHR::present(PresentImage* image)
 
     const VkExtent3D& extent = image->getImage()->getExtent();
     int srcRowPitch = image->getImage()->rowPitchBytes(VK_IMAGE_ASPECT_COLOR_BIT, 0);
-    int dstRowPitch = androidImage->stride * 4; // 假设目标格式为 RGBA_8888 (每像素4字节)
+    int dstRowPitch = androidImage->stride * 4; // 假设目标格式为 RGBA_8888
 
-    // 获取源图像数据指针
     VkImageSubresource subresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
     uint8_t* src = static_cast<uint8_t*>(image->getImage()->getTexelPointer(VkOffset3D{0,0,0}, subresource));
     if (!src)
