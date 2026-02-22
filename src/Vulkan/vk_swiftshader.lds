@@ -279,6 +279,9 @@ global:
     vkGetSwapchainGrallocUsage2ANDROID;
     vkGetAndroidHardwareBufferPropertiesANDROID;
     vkGetMemoryAndroidHardwareBufferANDROID;
+    vkCreateAndroidSurfaceKHR;
+    vkGetAndroidHardwareBufferPropertiesANDROID;
+    vkGetMemoryAndroidHardwareBufferANDROID;
 
     HMI;
 local:
