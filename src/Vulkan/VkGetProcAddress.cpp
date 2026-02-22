@@ -189,6 +189,12 @@ static const std::unordered_map<std::string, InstanceFunctionEntry> instanceFunc
 	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateWin32SurfaceKHR),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceWin32PresentationSupportKHR),
 #endif
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+   // VK_KHR_android_surface
+   MAKE_VULKAN_INSTANCE_ENTRY(vkCreateAndroidSurfaceKHR),
+   MAKE_VULKAN_INSTANCE_ENTRY(vkGetAndroidHardwareBufferPropertiesANDROID),
+   MAKE_VULKAN_INSTANCE_ENTRY(vkGetMemoryAndroidHardwareBufferANDROID),
+#endif
 	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateHeadlessSurfaceEXT),
 };
 #undef MAKE_VULKAN_INSTANCE_ENTRY
