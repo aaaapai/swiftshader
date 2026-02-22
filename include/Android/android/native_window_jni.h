@@ -28,7 +28,6 @@
 
 #include <android/native_window.h>
 
-#include <nativehelper/jni.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,7 +39,6 @@ extern "C" {
  * on the ANativeWindow that is returned; be sure to use ANativeWindow_release()
  * when done with it so that it doesn't leak.
  */
-ANativeWindow* ANativeWindow_fromSurface(JNIEnv* env, jobject surface);
 
 #ifdef __cplusplus
 };
