@@ -20,19 +20,23 @@
 
 #include <vulkan/vulkan_android.h>
 #include <android/native_window.h>
-#include <android/native_window_jni.h>
+#include <android/hardware_buffer.h>
 
 #include <unordered_map>
 
+// 定义缺失的常量
+#ifndef WINDOW_FORMAT_RGBA_FP16
+#define WINDOW_FORMAT_RGBA_FP16 0x16  // AHardwareBuffer格式对应值
+#endif
+
+#ifndef WINDOW_FORMAT_RGBA_1010102
+#define WINDOW_FORMAT_RGBA_1010102 0x2B  // AHardwareBuffer格式对应值
+#endif
+
 namespace vk {
 
-struct AndroidImage
-{
-    ANativeWindowBuffer* buffer;
-    uint8_t* cpuAddr;
-    int fenceFd;
-    bool locked;
-};
+// 前向声明
+struct AndroidImage;
 
 class AndroidSurfaceKHR : public SurfaceKHR, public ObjectBase<AndroidSurfaceKHR, VkSurfaceKHR>
 {
@@ -59,6 +63,20 @@ private:
     ANativeWindow* window;
     ANativeWindow* nativeWindow;
     std::unordered_map<PresentImage *, AndroidImage *> imageMap;
+};
+
+// AndroidImage结构体定义（放在类外面）
+struct AndroidImage
+{
+    ANativeWindow_Buffer buffer;  // 使用 ANativeWindow_Buffer 而不是 ANativeWindowBuffer
+    AHardwareBuffer* hardwareBuffer;
+    uint8_t* cpuAddr;
+    int fenceFd;
+    bool locked;
+    int width;
+    int height;
+    int stride;
+    uint32_t format;
 };
 
 }  // namespace vk
