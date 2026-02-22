@@ -1,4 +1,5 @@
 #include <vndk/window.h>
+#include <android/native_window.h>  // 确保 ANativeWindow_Buffer 等类型可见
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <android/log.h>
@@ -41,6 +42,11 @@ typedef int (*AHardwareBuffer_lockPlanes_t)(AHardwareBuffer* buffer,
                                              AHardwareBuffer_Planes* outPlanes);
 typedef int (*AHardwareBuffer_unlock_t)(AHardwareBuffer* buffer, int32_t* fence);
 
+// 新增函数指针类型
+typedef int (*ANativeWindow_setBuffersGeometry_t)(ANativeWindow*, int32_t, int32_t, int32_t);
+typedef int (*ANativeWindow_lock_t)(ANativeWindow*, ANativeWindow_Buffer*, ARect*);
+typedef int (*ANativeWindow_unlockAndPost_t)(ANativeWindow*);
+
 // 函数指针变量
 static ANativeWindowBuffer_getHardwareBuffer_t fp_ANativeWindowBuffer_getHardwareBuffer = nullptr;
 static AHardwareBuffer_acquire_t fp_AHardwareBuffer_acquire = nullptr;
@@ -64,6 +70,11 @@ static AHardwareBuffer_createFromHandle_t fp_AHardwareBuffer_createFromHandle = 
 static AHardwareBuffer_lockPlanes_t fp_AHardwareBuffer_lockPlanes = nullptr;
 static AHardwareBuffer_unlock_t fp_AHardwareBuffer_unlock = nullptr;
 
+// 新增函数指针变量
+static ANativeWindow_setBuffersGeometry_t fp_ANativeWindow_setBuffersGeometry = nullptr;
+static ANativeWindow_lock_t fp_ANativeWindow_lock = nullptr;
+static ANativeWindow_unlockAndPost_t fp_ANativeWindow_unlockAndPost = nullptr;
+
 // 线程安全初始化机制
 static std::once_flag sInitFlag;
 static std::mutex sLibraryMutex;
@@ -79,7 +90,7 @@ static void initNativeWindowWrapperImpl() {
         return;
     }
     
-    // 尝试加载库文件
+    // 尝试加载 libnativewindow.so
     const char* libPaths[] = {
         "/system/lib64/libnativewindow.so",
         "/system/lib/libnativewindow.so",
@@ -101,6 +112,28 @@ static void initNativeWindowWrapperImpl() {
             break;
         }
         ALOGW("Failed to load %s: %s", libPaths[i], dlerror());
+    }
+    
+    // 如果 libnativewindow.so 加载失败，尝试 libandroid.so
+    if (sNativeWindowHandle == nullptr) {
+        const char* libPaths2[] = {
+            "/system/lib64/libandroid.so",
+            "/system/lib/libandroid.so",
+            "libandroid.so",
+            nullptr
+        };
+        for (int i = 0; libPaths2[i] != nullptr; i++) {
+            void* handle = dlopen(libPaths2[i], RTLD_NOLOAD | RTLD_LOCAL);
+            if (!handle) {
+                handle = dlopen(libPaths2[i], RTLD_LAZY | RTLD_LOCAL);
+            }
+            if (handle) {
+                sNativeWindowHandle = handle;
+                ALOGI("Successfully loaded %s", libPaths2[i]);
+                break;
+            }
+            ALOGW("Failed to load %s: %s", libPaths2[i], dlerror());
+        }
     }
     
     if (sNativeWindowHandle == nullptr) {
@@ -152,6 +185,14 @@ static void initNativeWindowWrapperImpl() {
         dlsym(sNativeWindowHandle, "AHardwareBuffer_lockPlanes"));
     fp_AHardwareBuffer_unlock = reinterpret_cast<AHardwareBuffer_unlock_t>(
         dlsym(sNativeWindowHandle, "AHardwareBuffer_unlock"));
+
+    // 解析新增函数符号
+    fp_ANativeWindow_setBuffersGeometry = reinterpret_cast<ANativeWindow_setBuffersGeometry_t>(
+        dlsym(sNativeWindowHandle, "ANativeWindow_setBuffersGeometry"));
+    fp_ANativeWindow_lock = reinterpret_cast<ANativeWindow_lock_t>(
+        dlsym(sNativeWindowHandle, "ANativeWindow_lock"));
+    fp_ANativeWindow_unlockAndPost = reinterpret_cast<ANativeWindow_unlockAndPost_t>(
+        dlsym(sNativeWindowHandle, "ANativeWindow_unlockAndPost"));
     
     // 检查关键函数是否解析成功
     if (!fp_ANativeWindowBuffer_getHardwareBuffer || !fp_AHardwareBuffer_acquire ||
@@ -167,7 +208,7 @@ static inline void ensureInitialized() {
     std::call_once(sInitFlag, initNativeWindowWrapperImpl);
 }
 
-// 内部函数：安全地获取函数指针
+// 内部函数：安全地获取函数指针（此模板未使用，保留原样）
 template<typename T>
 static T getFunctionPointer(T* funcPtr, const char* funcName) {
     ensureInitialized();
@@ -329,6 +370,22 @@ int AHardwareBuffer_lockPlanes(AHardwareBuffer* buffer,
 int AHardwareBuffer_unlock(AHardwareBuffer* buffer, int32_t* fence) {
     //printf("AHardwareBuffer_unlock called with buffer=%p, fence=%p\n", buffer, fence);
     SAFE_CALL_ERRNO(AHardwareBuffer_unlock, buffer, fence);
+}
+
+// ---------- 新增函数实现 ----------
+int ANativeWindow_setBuffersGeometry(ANativeWindow* window, int32_t width, int32_t height, int32_t format) {
+    //printf("ANativeWindow_setBuffersGeometry called with window=%p, width=%d, height=%d, format=%d\n", window, width, height, format);
+    SAFE_CALL_ERRNO(ANativeWindow_setBuffersGeometry, window, width, height, format);
+}
+
+int ANativeWindow_lock(ANativeWindow* window, ANativeWindow_Buffer* outBuffer, ARect* inOutDirtyBounds) {
+    //printf("ANativeWindow_lock called with window=%p, outBuffer=%p, inOutDirtyBounds=%p\n", window, outBuffer, inOutDirtyBounds);
+    SAFE_CALL_ERRNO(ANativeWindow_lock, window, outBuffer, inOutDirtyBounds);
+}
+
+int ANativeWindow_unlockAndPost(ANativeWindow* window) {
+    //printf("ANativeWindow_unlockAndPost called with window=%p\n", window);
+    SAFE_CALL_ERRNO(ANativeWindow_unlockAndPost, window);
 }
 
 } // extern "C"
