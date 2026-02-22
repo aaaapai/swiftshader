@@ -284,8 +284,7 @@ EXPORTS
     vkGetAndroidHardwareBufferPropertiesANDROID
     vkGetMemoryAndroidHardwareBufferANDROID
     vkCreateAndroidSurfaceKHR
-    vkGetAndroidHardwareBufferPropertiesANDROID
-    vkGetMemoryAndroidHardwareBufferANDROID
+
 
 
 
