@@ -283,5 +283,9 @@ EXPORTS
     vkGetSwapchainGrallocUsage2ANDROID
     vkGetAndroidHardwareBufferPropertiesANDROID
     vkGetMemoryAndroidHardwareBufferANDROID
+    vkCreateAndroidSurfaceKHR
+    vkGetAndroidHardwareBufferPropertiesANDROID
+    vkGetMemoryAndroidHardwareBufferANDROID
+
 
 
