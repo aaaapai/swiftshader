@@ -63,6 +63,16 @@ public:
     void detachImage(PresentImage *image) override;
     VkResult present(PresentImage *image) override;
 
+    VkResult getSurfaceFormats(const void *pSurfaceInfoPNext,
+                               uint32_t *pSurfaceFormatCount,
+                               VkSurfaceFormatKHR *pSurfaceFormats,
+                               void *pSurfaceFormatsPNext) const override;
+
+    VkResult getPresentModes(const void *pSurfaceInfoPNext,
+                             uint32_t *pPresentModeCount,
+                             VkPresentModeKHR *pPresentModes,
+                             void *pPresentModesPNext) const override;
+
 private:
     int getNativeWindowFormat(VkFormat format) const;
 
