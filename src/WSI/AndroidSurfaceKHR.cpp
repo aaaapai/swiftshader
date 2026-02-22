@@ -16,16 +16,18 @@
 
 #include "Vulkan/VkDeviceMemory.hpp"
 #include "Vulkan/VkImage.hpp"
+#include "System/Debug.hpp"
 
-#include <vndk/window.h>
-#include <vndk/hardware_buffer.h>
 #include <sync/sync.h>
 #include <string.h>
 #include <unistd.h>
+#include <android/hardware_buffer.h>
 
-// 检查是否可以使用AHardwareBuffer API
+// 检查是否支持AHardwareBuffer API
 #if __ANDROID_API__ >= 26
 #define HAVE_AHARDWAREBUFFER 1
+#else
+#define HAVE_AHARDWAREBUFFER 0
 #endif
 
 namespace vk {
@@ -77,14 +79,9 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
         static_cast<uint32_t>(height) 
     };
     
-    // 查询native window支持的最小和最大buffer计数
-    int minUndeqeueudBuffers = 0;
-    int maxDequeuedBuffers = 0;
-    native_window_get_min_undequeued_buffer_count(nativeWindow, &minUndeqeueudBuffers);
-    
     // Android典型值：min=2 (双缓冲), max=3 (三缓冲)
-    pSurfaceCapabilities->minImageCount = minUndeqeueudBuffers + 1;  // 至少需要一个dequeued buffer
-    pSurfaceCapabilities->maxImageCount = 3;  // 或从native window查询
+    pSurfaceCapabilities->minImageCount = 2;
+    pSurfaceCapabilities->maxImageCount = 3;
     
     pSurfaceCapabilities->supportedCompositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     pSurfaceCapabilities->supportedTransforms = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
@@ -97,6 +94,7 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
 
     pSurfaceCapabilities->maxImageArrayLayers = 1;
 
+    // 调用基类函数设置通用capabilities
     SetCommonSurfaceCapabilities(pSurfaceInfoPNext, pSurfaceCapabilities, pSurfaceCapabilitiesPNext);
     return VK_SUCCESS;
 }
@@ -109,53 +107,33 @@ void AndroidSurfaceKHR::attachImage(PresentImage *image)
     memset(androidImage, 0, sizeof(AndroidImage));
     
     const VkExtent3D &extent = image->getImage()->getExtent();
-    int format = getNativeWindowFormat(image->getImage()->getFormat());
+    androidImage->width = extent.width;
+    androidImage->height = extent.height;
+    androidImage->format = getNativeWindowFormat(image->getImage()->getFormat());
     
     // 配置native window buffer
-    ANativeWindow_setBuffersGeometry(nativeWindow, extent.width, extent.height, format);
+    ANativeWindow_setBuffersGeometry(nativeWindow, extent.width, extent.height, androidImage->format);
     
-    // 从native window获取buffer
-    ANativeWindowBuffer* buffer = nullptr;
-    int fenceFd = -1;
-    
-    if (ANativeWindow_dequeueBuffer(nativeWindow, &buffer, &fenceFd) != 0)
+    // 使用ANativeWindow_Buffer方式（更简单可靠）
+    ANativeWindow_Buffer buffer;
+    int result = ANativeWindow_lock(nativeWindow, &buffer, nullptr);
+    if (result != 0)
     {
         delete androidImage;
         return;
     }
     
-    // 等待fence
-    if (fenceFd != -1)
-    {
-        sync_wait(fenceFd, -1);
-        close(fenceFd);
-    }
-    
     androidImage->buffer = buffer;
-    androidImage->fenceFd = -1;
+    androidImage->cpuAddr = static_cast<uint8_t*>(buffer.bits);
+    androidImage->stride = buffer.stride;
+    androidImage->locked = true;
     
-#ifdef HAVE_AHARDWAREBUFFER
-    // 使用AHardwareBuffer API获取CPU访问权限（现代方式）
-    AHardwareBuffer* hardwareBuffer = AHardwareBuffer_from_ANativeWindowBuffer(buffer);
+    // 尝试获取AHardwareBuffer（如果支持）
+#if HAVE_AHARDWAREBUFFER
+    AHardwareBuffer* hardwareBuffer = AHardwareBuffer_from_ANativeWindow(nativeWindow);
     if (hardwareBuffer)
     {
-        void* cpuAddr = nullptr;
-        // 锁定硬件buffer用于写入
-        if (AHardwareBuffer_lock(hardwareBuffer, 
-                                 AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
-                                 -1, nullptr, &cpuAddr) == 0)
-        {
-            androidImage->cpuAddr = static_cast<uint8_t*>(cpuAddr);
-            androidImage->hardwareBuffer = hardwareBuffer;
-        }
-    }
-#else
-    // 回退到ANativeWindowBuffer的直接操作（传统方式）
-    void* cpuAddr = nullptr;
-    if (buffer->common.magic == ANDROID_NATIVE_BUFFER_MAGIC)
-    {
-        // 假设可以通过某种方式获取CPU地址
-        // 实际可能需要使用gralloc或其他机制
+        androidImage->hardwareBuffer = hardwareBuffer;
     }
 #endif
     
@@ -169,16 +147,9 @@ void AndroidSurfaceKHR::detachImage(PresentImage *image)
     {
         AndroidImage *androidImage = it->second;
         
-#ifdef HAVE_AHARDWAREBUFFER
-        if (androidImage->cpuAddr && androidImage->hardwareBuffer)
+        if (androidImage->locked && nativeWindow)
         {
-            AHardwareBuffer_unlock(androidImage->hardwareBuffer, nullptr);
-        }
-#endif
-        
-        if (androidImage->buffer && nativeWindow)
-        {
-            ANativeWindow_cancelBuffer(nativeWindow, androidImage->buffer, -1);
+            ANativeWindow_unlockAndPost(nativeWindow);
         }
         
         delete androidImage;
@@ -195,43 +166,35 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     }
     
     AndroidImage *androidImage = it->second;
-    const VkExtent3D &extent = image->getImage()->getExtent();
     
     // 复制图像数据到buffer
-    if (androidImage->cpuAddr)
+    if (androidImage->cpuAddr && androidImage->locked)
     {
         int bufferRowPitch = image->getImage()->rowPitchBytes(VK_IMAGE_ASPECT_COLOR_BIT, 0);
-        image->getImage()->copyTo(androidImage->cpuAddr, bufferRowPitch);
+        int destRowPitch = androidImage->stride * 4; // 假设RGBA_8888格式，每像素4字节
         
-#ifdef HAVE_AHARDWAREBUFFER
-        if (androidImage->hardwareBuffer)
+        const VkExtent3D &extent = image->getImage()->getExtent();
+        uint8_t* src = static_cast<uint8_t*>(image->getImage()->getTexelPointer(VkOffset3D{0,0,0}, VK_IMAGE_ASPECT_COLOR_BIT));
+        uint8_t* dst = androidImage->cpuAddr;
+        
+        for (int y = 0; y < extent.height; y++)
         {
-            AHardwareBuffer_unlock(androidImage->hardwareBuffer, nullptr);
-            androidImage->cpuAddr = nullptr;
-        }
-#endif
-    }
-    
-    // 提交buffer给SurfaceFlinger
-    int fenceFd = -1;
-    if (ANativeWindow_queueBuffer(nativeWindow, androidImage->buffer, &fenceFd) == 0)
-    {
-        if (fenceFd != -1)
-        {
-            close(fenceFd);
+            memcpy(dst + y * destRowPitch, src + y * bufferRowPitch, extent.width * 4);
         }
         
-        imageMap.erase(it);
-        delete androidImage;
-        return VK_SUCCESS;
+        // 解锁并提交buffer
+        ANativeWindow_unlockAndPost(nativeWindow);
+        androidImage->locked = false;
     }
     
-    return VK_ERROR_SURFACE_LOST_KHR;
+    imageMap.erase(it);
+    delete androidImage;
+    
+    return VK_SUCCESS;
 }
 
 int AndroidSurfaceKHR::getNativeWindowFormat(VkFormat format) const
 {
-    // 可以直接使用AHardwareBuffer格式
     switch (format)
     {
     case VK_FORMAT_R8G8B8A8_UNORM:
@@ -240,12 +203,26 @@ int AndroidSurfaceKHR::getNativeWindowFormat(VkFormat format) const
     case VK_FORMAT_R5G6B5_UNORM_PACK16:
         return WINDOW_FORMAT_RGB_565;
     case VK_FORMAT_R16G16B16A16_SFLOAT:
+        // 使用RGBA_FP16格式（如果支持）
         return WINDOW_FORMAT_RGBA_FP16;
-    case VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK:
+    case VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16:
+        // 使用RGBA_1010102格式（如果支持）
         return WINDOW_FORMAT_RGBA_1010102;
     default:
         return WINDOW_FORMAT_RGBA_8888;
     }
+}
+
+bool AndroidSurfaceKHR::waitForFence(int fenceFd) const
+{
+    if (fenceFd < 0) return true;
+    
+    // 等待fence
+    const int timeoutMs = 3000;
+    int result = sync_wait(fenceFd, timeoutMs);
+    close(fenceFd);
+    
+    return result == 0;
 }
 
 }  // namespace vk
