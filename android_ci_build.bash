@@ -62,7 +62,7 @@ cmake_build () {
   mkdir -p build
   cd build
   cmake $GITHUB_WORKSPACE -DANDROID_PLATFORM=29 -DANDROID_ABI=$ANDROID_ABI -DCMAKE_ANDROID_STL_TYPE=c++_static -DCMAKE_SYSTEM_NAME=Android -DANDROID_TOOLCHAIN=clang -DCMAKE_MAKE_PROGRAM=$ANDROID_NDK_LATEST_HOME/prebuilt/linux-x86_64/bin/make -DSWIFTSHADER_DCHECK_ALWAYS_ON=TRUE -DREACTOR_EMIT_PRINT_LOCATION=TRUE -DREACTOR_ENABLE_PRINT=TRUE -DSWIFTSHADER_WARNINGS_AS_ERRORS=false -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake
-  cmake --build . --config Release --parallel 6
+  cmake --build . --config Debug --parallel 6
 }
 
 cmake_build arm64-v8a
