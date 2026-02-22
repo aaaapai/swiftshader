@@ -16,6 +16,4 @@
 
 #pragma once
 
-extern "C" {
-int sync_wait(int fd, int timeout);
-};
+#include "../android/sync.h"
