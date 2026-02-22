@@ -79,6 +79,8 @@ enum {
     AHARDWAREBUFFER_FORMAT_YCrCb_420_SP             = 0x11,
     /* same as HAL_PIXEL_FORMAT_YCBCR_422_I */
     AHARDWAREBUFFER_FORMAT_YCbCr_422_I              = 0x14,
+
+    AHARDWAREBUFFER_FORMAT_YCbCr_P010               = 0x36,
 };
 
 /**
