@@ -76,12 +76,17 @@
 #	include "WSI/Win32SurfaceKHR.hpp"
 #endif
 
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+#   include "WSI/AndroidSurfaceKHR.hpp"
+#endif
+
 #include "marl/mutex.h"
 #include "marl/scheduler.h"
 #include "marl/thread.h"
 #include "marl/tsa.h"
 
 #ifdef __ANDROID__
+#   include <vulkan/vulkan_android.h>
 #	include <unistd.h>
 
 #	include "commit.h"
@@ -4725,6 +4730,32 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceWin32PresentationSupportKHR(Vk
 	return VK_TRUE;
 }
 #endif
+
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateAndroidSurfaceKHR(VkInstance instance, const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSurfaceKHR *pSurface)
+{
+    TRACE("(VkInstance instance = %p, VkAndroidSurfaceCreateInfoKHR* pCreateInfo = %p, VkAllocationCallbacks* pAllocator = %p, VkSurfaceKHR* pSurface = %p)",
+          instance, pCreateInfo, pAllocator, pSurface);
+
+    return vk::AndroidSurfaceKHR::Create(pAllocator, pCreateInfo, pSurface);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkGetAndroidHardwareBufferPropertiesANDROID(VkDevice device, const struct AHardwareBuffer* buffer, VkAndroidHardwareBufferPropertiesANDROID* pProperties)
+{
+    TRACE("(VkDevice device = %p, AHardwareBuffer* buffer = %p, VkAndroidHardwareBufferPropertiesANDROID* pProperties = %p)",
+          device, buffer, pProperties);
+
+    return vk::Cast(device)->getAndroidHardwareBufferProperties(buffer, pProperties);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkGetMemoryAndroidHardwareBufferANDROID(VkDevice device, const VkMemoryGetAndroidHardwareBufferInfoANDROID* pInfo, struct AHardwareBuffer** pBuffer)
+{
+    TRACE("(VkDevice device = %p, VkMemoryGetAndroidHardwareBufferInfoANDROID* pInfo = %p, AHardwareBuffer** pBuffer = %p)",
+          device, pInfo, pBuffer);
+
+    return vk::Cast(device)->getMemoryAndroidHardwareBuffer(pInfo, pBuffer);
+}
+#endif // VK_USE_PLATFORM_ANDROID_KHR
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateHeadlessSurfaceEXT(VkInstance instance, const VkHeadlessSurfaceCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSurfaceKHR *pSurface)
 {
