@@ -76,6 +76,11 @@ elseif(APPLE)
         MetalSurface.mm
         MetalSurface.hpp
     )
+elseif(ANDROID)
+    list(APPEND WSI_SRC_FILES
+        AndroidSurfaceKHR.cpp
+        AndroidSurfaceKHR.hpp
+    )
 endif()
 
 set(WSI_COMPILE_OPTIONS "")
