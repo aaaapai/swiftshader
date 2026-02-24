@@ -30,7 +30,7 @@ class AndroidSurfaceKHR : public SurfaceKHR, public ObjectBase<AndroidSurfaceKHR
 {
 public:
     AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem);
-    ~AndroidSurfaceKHR() = default;
+    ~AndroidSurfaceKHR() override = default;  // 使用默认析构函数
 
     void destroySurface(const VkAllocationCallbacks *pAllocator) override;
 
@@ -49,7 +49,6 @@ public:
     void detachImage(PresentImage *image) override;
     VkResult present(PresentImage *image) override;
 
-    // 获取原始 ANativeWindow（用于 EGL 创建）
     ANativeWindow* getNativeWindow() const { return window_; }
 
 private:
