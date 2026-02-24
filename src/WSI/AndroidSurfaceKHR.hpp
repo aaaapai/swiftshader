@@ -1,7 +1,7 @@
 #ifndef SWIFTSHADER_ANDROIDSURFACEKHR_HPP_INCLUDED
 #define SWIFTSHADER_ANDROIDSURFACEKHR_HPP_INCLUDED
 
-#include "SurfaceKHR.hpp"
+#include "VkSurfaceKHR.hpp"
 #include <vulkan/vulkan.h>
 #include <Android/android/native_window.h>
 
