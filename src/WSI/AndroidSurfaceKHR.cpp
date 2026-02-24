@@ -152,10 +152,10 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
     AndroidSurfaceKHR *surface = new (memory) AndroidSurfaceKHR(pCreateInfo, memory);
     *pSurface = *surface; // 通过 ObjectBase 的 operator VkSurfaceKHR 转换
     
-    // 修正：正确打印 VkSurfaceKHR 值（需要转换）
-    uintptr_t surfaceHandle = static_cast<uintptr_t>(static_cast<void*>(*pSurface));
-    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, surface created at %p, window=%p, VkSurfaceKHR=0x%lx\n",
-            __FUNCTION__, getThreadId(), surface, surface->window_, surfaceHandle);
+    // 最简单的修正：直接使用 %p 打印，VkSurfaceKHR 在 SwiftShader 中就是指针类型
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, surface created at %p, window=%p, VkSurfaceKHR=%p\n",
+            __FUNCTION__, getThreadId(), surface, surface->window_, 
+            *pSurface);
     return VK_SUCCESS;
 }
 
