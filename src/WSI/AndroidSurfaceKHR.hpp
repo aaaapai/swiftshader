@@ -1,9 +1,9 @@
+// AndroidSurfaceKHR.hpp
 #ifndef SWIFTSHADER_ANDROIDSURFACEKHR_HPP_INCLUDED
 #define SWIFTSHADER_ANDROIDSURFACEKHR_HPP_INCLUDED
 
 #include "VkSurfaceKHR.hpp"
-#include <vulkan/vulkan.h>
-#include <Android/android/native_window.h>
+#include <android/native_window.h>
 
 namespace vk {
 
@@ -17,25 +17,20 @@ public:
                            const VkAndroidSurfaceCreateInfoKHR *pCreateInfo,
                            VkSurfaceKHR *pSurface);
 
-    VkResult getSurfaceSupport(uint32_t queueFamilyIndex, VkBool32 *pSupported) const override;
-    VkResult getSurfaceCapabilities(VkSurfaceCapabilitiesKHR *pSurfaceCapabilities) const override;
-    VkResult getSurfaceFormats(uint32_t *pSurfaceFormatCount, VkSurfaceFormatKHR *pSurfaceFormats) const override;
-    VkResult getPresentModes(uint32_t *pPresentModeCount, VkPresentModeKHR *pPresentModes) const override;
-
-    VkResult acquireImage(uint64_t timeout, uint32_t *imageIndex) override;
-    VkResult present(uint32_t imageIndex, const VkPresentInfoKHR *presentInfo) override;
+    // 实现基类纯虚函数
+    void destroySurface(const VkAllocationCallbacks *pAllocator) override;
+    VkResult getSurfaceCapabilities(const void *pSurfaceInfoPNext,
+                                    VkSurfaceCapabilitiesKHR *pSurfaceCapabilities,
+                                    void *pSurfaceCapabilitiesPNext) const override;
+    void attachImage(PresentImage *image) override;
+    void detachImage(PresentImage *image) override;
+    VkResult present(PresentImage *image) override;
 
 private:
-    ANativeWindow *window_;  // 描述 Android 绘图窗口
-    int32_t width_;
-    int32_t height_;
-    int32_t format_;
-
-    // Buffer image management (for acquire/present logic)
-    uint32_t currentImageIndex_;
-    uint32_t imageCount_;
+    ANativeWindow *window_;
+    mutable bool surfaceLost_ = false;   // 标记窗口是否已失效
 };
 
 }  // namespace vk
 
-#endif  // SWIFTSHADER_ANDROIDSURFACEKHR_HPP_INCLUDED
+#endif
