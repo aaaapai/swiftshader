@@ -20,8 +20,15 @@
 #include <android/data_space.h>
 #include <cstdio>
 #include <cstring>
+#include <unistd.h>  // for gettid()
 
 namespace vk {
+
+// 获取线程 ID 用于日志
+static int getThreadId()
+{
+    return static_cast<int>(gettid());
+}
 
 // Helper: map Vulkan format to AHardwareBuffer_Format
 static uint32_t VulkanFormatToAHBFormat(VkFormat format)
@@ -49,43 +56,61 @@ AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreat
 {
     if (window_)
     {
-        fprintf(stderr, "AndroidSurfaceKHR created with window %p\n", window_);
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, window=%p\n",
+                __FUNCTION__, getThreadId(), this, window_);
     }
+}
+
+AndroidSurfaceKHR::~AndroidSurfaceKHR()
+{
+    fprintf(stderr, "[AndroidSurfaceKHR::~%s] tid=%d, this=%p\n",
+            __FUNCTION__, getThreadId(), this);
 }
 
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
-    fprintf(stderr, "AndroidSurfaceKHR::destroySurface\n");
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, entering\n",
+            __FUNCTION__, getThreadId(), this);
 
-    // 释放所有硬件缓冲（需要锁保护）
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, lock acquired, buffers size=%zu\n",
+                __FUNCTION__, getThreadId(), this, buffers_.size());
+
+        // 释放所有硬件缓冲
         for (auto &pair : buffers_)
         {
             auto &res = pair.second;
+            fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, releasing buffer for image %p (buffer=%p, mappedPtr=%p)\n",
+                    __FUNCTION__, getThreadId(), this, pair.first, res.buffer, res.mappedPtr);
             if (res.mappedPtr)
             {
-                AHardwareBuffer_unlock(res.buffer, nullptr);
+                int unlockRes = AHardwareBuffer_unlock(res.buffer, nullptr);
+                fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHardwareBuffer_unlock returned %d\n",
+                        __FUNCTION__, getThreadId(), this, unlockRes);
             }
             if (res.buffer)
             {
                 AHardwareBuffer_release(res.buffer);
+                fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHardwareBuffer_release called\n",
+                        __FUNCTION__, getThreadId(), this);
             }
         }
         buffers_.clear();
 
         // 标记表面已丢失
         surfaceLost_ = true;
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, surface marked lost\n",
+                __FUNCTION__, getThreadId(), this);
 
         // 注意：不释放 window_，因为生命周期由调用者管理
         window_ = nullptr;
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, window_ set to null\n",
+                __FUNCTION__, getThreadId(), this);
     }
 
-    // ！！！重要：不再显式调用析构函数，也不释放内存 ！！！
-    // 内存释放由上层 vkDestroySurfaceKHR 通过 pAllocator->pfnFree 处理
-    // 析构函数此时不会被调用，但 mutex_ 等成员会随着内存释放而被遗弃，
-    // 这在表面对象数量有限且进程退出时系统会回收资源的前提下可接受，
-    // 且避免了因显式析构导致 mutex_ 被二次销毁的崩溃。
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, exiting (will not free memory, that's done by vkDestroySurfaceKHR)\n",
+            __FUNCTION__, getThreadId(), this);
 }
 
 size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo)
@@ -97,11 +122,11 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
                                    const VkAndroidSurfaceCreateInfoKHR *pCreateInfo,
                                    VkSurfaceKHR *pSurface)
 {
-    fprintf(stderr, "AndroidSurfaceKHR::Create\n");
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d\n", __FUNCTION__, getThreadId());
 
     if (!pCreateInfo || !pCreateInfo->window || !pSurface)
     {
-        fprintf(stderr, "AndroidSurfaceKHR::Create: invalid parameters\n");
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, invalid parameters\n", __FUNCTION__, getThreadId());
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -112,19 +137,25 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
                                            sizeof(AndroidSurfaceKHR),
                                            alignof(AndroidSurfaceKHR),
                                            VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, allocated memory via pfnAllocation: %p\n",
+                __FUNCTION__, getThreadId(), memory);
     }
     else
     {
         memory = malloc(sizeof(AndroidSurfaceKHR));
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, allocated memory via malloc: %p\n",
+                __FUNCTION__, getThreadId(), memory);
     }
     if (!memory)
     {
-        fprintf(stderr, "AndroidSurfaceKHR::Create: out of host memory\n");
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, out of host memory\n", __FUNCTION__, getThreadId());
         return VK_ERROR_OUT_OF_HOST_MEMORY;
     }
 
     AndroidSurfaceKHR *surface = new (memory) AndroidSurfaceKHR(pCreateInfo, memory);
     *pSurface = *surface; // 通过 ObjectBase 的 operator VkSurfaceKHR 转换
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, surface created at %p, window=%p, VkSurfaceKHR=%p\n",
+            __FUNCTION__, getThreadId(), surface, surface->window_, *pSurface);
     return VK_SUCCESS;
 }
 
@@ -136,6 +167,8 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
 
     if (surfaceLost_ || !window_)
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, surface lost or window null\n",
+                __FUNCTION__, getThreadId(), this);
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
@@ -143,6 +176,8 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
     int32_t height = ANativeWindow_getHeight(window_);
     if (width <= 0 || height <= 0)
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, window size invalid (%d x %d), marking lost\n",
+                __FUNCTION__, getThreadId(), this, width, height);
         surfaceLost_ = true;
         return VK_ERROR_SURFACE_LOST_KHR;
     }
@@ -169,24 +204,29 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
 
     if (!window_ || surfaceLost_)
     {
-        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: surface lost\n");
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, surface lost or window null\n",
+                __FUNCTION__, getThreadId(), this);
         return nullptr;
     }
 
     const vk::Image *vkImage = image->getImage();
     if (!vkImage)
     {
-        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: null image\n");
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, null image\n",
+                __FUNCTION__, getThreadId(), this);
         return nullptr;
     }
 
     VkExtent3D extent = vkImage->getExtent();
     VkFormat format = vkImage->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, image extent=%ux%u, format=%d\n",
+            __FUNCTION__, getThreadId(), this, extent.width, extent.height, format);
 
     uint32_t ahbFormat = VulkanFormatToAHBFormat(format);
     if (ahbFormat == 0)
     {
-        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: unsupported format %d\n", format);
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, unsupported format %d\n",
+                __FUNCTION__, getThreadId(), this, format);
         return nullptr;
     }
 
@@ -202,9 +242,12 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
     AHardwareBuffer *buffer;
     if (AHardwareBuffer_allocate(&desc, &buffer) != 0)
     {
-        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_allocate failed\n");
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHardwareBuffer_allocate failed\n",
+                __FUNCTION__, getThreadId(), this);
         return nullptr;
     }
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, allocated AHB %p\n",
+            __FUNCTION__, getThreadId(), this, buffer);
 
     // 锁定获取 CPU 可写指针
     void *mappedPtr = nullptr;
@@ -212,55 +255,84 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
     if (AHardwareBuffer_lock(buffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
                              -1, &rect, &mappedPtr) != 0)
     {
-        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_lock failed\n");
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHardwareBuffer_lock failed\n",
+                __FUNCTION__, getThreadId(), this);
         AHardwareBuffer_release(buffer);
         return nullptr;
     }
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHB locked, mappedPtr=%p\n",
+            __FUNCTION__, getThreadId(), this, mappedPtr);
 
     // 获取实际描述信息，计算步幅
     AHardwareBuffer_Desc actualDesc;
     AHardwareBuffer_describe(buffer, &actualDesc);
     uint32_t stride = actualDesc.stride * 4; // 假设 4 字节每像素
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHB stride=%u\n",
+            __FUNCTION__, getThreadId(), this, stride);
 
     buffers_[image] = { buffer, mappedPtr, stride };
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, stored in buffers_, size now %zu\n",
+            __FUNCTION__, getThreadId(), this, buffers_.size());
+
     return mappedPtr;
 }
 
 void AndroidSurfaceKHR::releaseImageMemory(PresentImage *image)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, releasing for image %p\n",
+            __FUNCTION__, getThreadId(), this, image);
 
     auto it = buffers_.find(image);
     if (it != buffers_.end())
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, found buffer %p, mappedPtr=%p\n",
+                __FUNCTION__, getThreadId(), this, it->second.buffer, it->second.mappedPtr);
         if (it->second.mappedPtr)
         {
-            AHardwareBuffer_unlock(it->second.buffer, nullptr);
+            int unlockRes = AHardwareBuffer_unlock(it->second.buffer, nullptr);
+            fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHardwareBuffer_unlock returned %d\n",
+                    __FUNCTION__, getThreadId(), this, unlockRes);
         }
         if (it->second.buffer)
         {
             AHardwareBuffer_release(it->second.buffer);
+            fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, AHardwareBuffer_release called\n",
+                    __FUNCTION__, getThreadId(), this);
         }
         buffers_.erase(it);
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, erased, size now %zu\n",
+                __FUNCTION__, getThreadId(), this, buffers_.size());
+    }
+    else
+    {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, image not found in buffers_\n",
+                __FUNCTION__, getThreadId(), this);
     }
 }
 
 void AndroidSurfaceKHR::attachImage(PresentImage *image)
 {
-    // 无需特殊处理
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, image=%p\n",
+            __FUNCTION__, getThreadId(), this, image);
 }
 
 void AndroidSurfaceKHR::detachImage(PresentImage *image)
 {
-    // 无需特殊处理
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, image=%p\n",
+            __FUNCTION__, getThreadId(), this, image);
 }
 
 VkResult AndroidSurfaceKHR::present(PresentImage *image)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, presenting image %p\n",
+            __FUNCTION__, getThreadId(), this, image);
 
     if (surfaceLost_ || !window_)
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, surface lost or window null\n",
+                __FUNCTION__, getThreadId(), this);
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
@@ -268,15 +340,23 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     auto it = buffers_.find(image);
     if (it == buffers_.end())
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, image not found in buffers_\n",
+                __FUNCTION__, getThreadId(), this);
         return VK_ERROR_OUT_OF_DATE_KHR;
     }
     HardwareBufferResource &res = it->second;
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, found buffer %p, mappedPtr=%p\n",
+            __FUNCTION__, getThreadId(), this, res.buffer, res.mappedPtr);
 
     // 检查窗口大小
     int32_t windowWidth = ANativeWindow_getWidth(window_);
     int32_t windowHeight = ANativeWindow_getHeight(window_);
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, window size %dx%d\n",
+            __FUNCTION__, getThreadId(), this, windowWidth, windowHeight);
     if (windowWidth <= 0 || windowHeight <= 0)
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, invalid window size, marking lost\n",
+                __FUNCTION__, getThreadId(), this);
         surfaceLost_ = true;
         return VK_ERROR_SURFACE_LOST_KHR;
     }
@@ -286,6 +366,9 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     if (static_cast<uint32_t>(windowWidth) != imageExtent.width ||
         static_cast<uint32_t>(windowHeight) != imageExtent.height)
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, size mismatch: window=%dx%d, image=%dx%d\n",
+                __FUNCTION__, getThreadId(), this, windowWidth, windowHeight,
+                imageExtent.width, imageExtent.height);
         return VK_ERROR_OUT_OF_DATE_KHR;
     }
 
@@ -294,9 +377,13 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     ARect dirty = { 0, 0, windowWidth, windowHeight };
     if (ANativeWindow_lock(window_, &outBuffer, &dirty) != 0)
     {
+        fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, ANativeWindow_lock failed, marking lost\n",
+                __FUNCTION__, getThreadId(), this);
         surfaceLost_ = true;
         return VK_ERROR_SURFACE_LOST_KHR;
     }
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, window locked, buffer bits=%p, stride=%d\n",
+            __FUNCTION__, getThreadId(), this, outBuffer.bits, outBuffer.stride);
 
     // 从硬件缓冲复制到窗口缓冲区
     // 假设两者都是 32bpp RGBA
@@ -313,6 +400,8 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     }
 
     ANativeWindow_unlockAndPost(window_);
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, this=%p, unlockAndPost done\n",
+            __FUNCTION__, getThreadId(), this);
     return VK_SUCCESS;
 }
 
