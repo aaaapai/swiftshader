@@ -18,6 +18,7 @@
 #include "Vulkan/VkImage.hpp"
 
 #include <android/data_space.h>
+#include <cstdio>
 #include <cstring>
 
 namespace vk {
@@ -45,13 +46,10 @@ static uint32_t VulkanFormatToAHBFormat(VkFormat format)
 AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem)
     : window_(pCreateInfo->window)
     , surfaceLost_(false)
-    , windowOwned_(false)  // 初始不拥有所有权
 {
     if (window_)
     {
-        // 注意：这里不调用 ANativeWindow_acquire，因为窗口是由调用者提供的
-        // 生命周期由调用者管理
-        ALOGV("AndroidSurfaceKHR created with window %p", window_);
+        fprintf(stderr, "AndroidSurfaceKHR created with window %p\n", window_);
     }
 }
 
@@ -59,7 +57,7 @@ void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    ALOGV("AndroidSurfaceKHR::destroySurface");
+    fprintf(stderr, "AndroidSurfaceKHR::destroySurface\n");
 
     // 释放所有硬件缓冲
     for (auto &pair : buffers_)
@@ -79,12 +77,12 @@ void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
     // 标记表面已丢失
     surfaceLost_ = true;
 
-    // 注意：不释放 window_，因为所有权不属于我们
+    // 注意：不释放 window_，因为生命周期由调用者管理
     window_ = nullptr;
 
     // 调用析构函数并释放内存
     this->~AndroidSurfaceKHR();
-    if (pAllocator)
+    if (pAllocator && pAllocator->pfnFree)
     {
         pAllocator->pfnFree(pAllocator->pUserData, this);
     }
@@ -103,11 +101,11 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
                                    const VkAndroidSurfaceCreateInfoKHR *pCreateInfo,
                                    VkSurfaceKHR *pSurface)
 {
-    ALOGV("AndroidSurfaceKHR::Create");
+    fprintf(stderr, "AndroidSurfaceKHR::Create\n");
 
     if (!pCreateInfo || !pCreateInfo->window || !pSurface)
     {
-        ALOGE("AndroidSurfaceKHR::Create: invalid parameters");
+        fprintf(stderr, "AndroidSurfaceKHR::Create: invalid parameters\n");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
@@ -125,7 +123,7 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
     }
     if (!memory)
     {
-        ALOGE("AndroidSurfaceKHR::Create: out of host memory");
+        fprintf(stderr, "AndroidSurfaceKHR::Create: out of host memory\n");
         return VK_ERROR_OUT_OF_HOST_MEMORY;
     }
 
@@ -175,14 +173,14 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
 
     if (!window_ || surfaceLost_)
     {
-        ALOGE("AndroidSurfaceKHR::allocateImageMemory: surface lost");
+        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: surface lost\n");
         return nullptr;
     }
 
     const vk::Image *vkImage = image->getImage();
     if (!vkImage)
     {
-        ALOGE("AndroidSurfaceKHR::allocateImageMemory: null image");
+        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: null image\n");
         return nullptr;
     }
 
@@ -192,7 +190,7 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
     uint32_t ahbFormat = VulkanFormatToAHBFormat(format);
     if (ahbFormat == 0)
     {
-        ALOGE("AndroidSurfaceKHR::allocateImageMemory: unsupported format %d", format);
+        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: unsupported format %d\n", format);
         return nullptr;
     }
 
@@ -208,7 +206,7 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
     AHardwareBuffer *buffer;
     if (AHardwareBuffer_allocate(&desc, &buffer) != 0)
     {
-        ALOGE("AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_allocate failed");
+        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_allocate failed\n");
         return nullptr;
     }
 
@@ -218,7 +216,7 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
     if (AHardwareBuffer_lock(buffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
                              -1, &rect, &mappedPtr) != 0)
     {
-        ALOGE("AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_lock failed");
+        fprintf(stderr, "AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_lock failed\n");
         AHardwareBuffer_release(buffer);
         return nullptr;
     }
