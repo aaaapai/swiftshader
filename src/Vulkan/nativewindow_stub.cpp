@@ -42,6 +42,13 @@ typedef int (*AHardwareBuffer_lockPlanes_t)(AHardwareBuffer* buffer,
                                              AHardwareBuffer_Planes* outPlanes);
 typedef int (*AHardwareBuffer_unlock_t)(AHardwareBuffer* buffer, int32_t* fence);
 
+// +++ ADDED: AHardwareBuffer_lock 函数指针类型 +++
+typedef int (*AHardwareBuffer_lock_t)(AHardwareBuffer* buffer,
+                                      uint64_t usage,
+                                      int32_t fence,
+                                      const ARect* rect,
+                                      void** outVirtualAddress);
+
 // 新增函数指针类型
 typedef int (*ANativeWindow_setBuffersGeometry_t)(ANativeWindow*, int32_t, int32_t, int32_t);
 typedef int (*ANativeWindow_lock_t)(ANativeWindow*, ANativeWindow_Buffer*, ARect*);
@@ -69,6 +76,8 @@ static ANativeWindow_getHeight_t fp_ANativeWindow_getHeight = nullptr;
 static AHardwareBuffer_createFromHandle_t fp_AHardwareBuffer_createFromHandle = nullptr;
 static AHardwareBuffer_lockPlanes_t fp_AHardwareBuffer_lockPlanes = nullptr;
 static AHardwareBuffer_unlock_t fp_AHardwareBuffer_unlock = nullptr;
+// +++ ADDED: AHardwareBuffer_lock 函数指针变量 +++
+static AHardwareBuffer_lock_t fp_AHardwareBuffer_lock = nullptr;
 
 // 新增函数指针变量
 static ANativeWindow_setBuffersGeometry_t fp_ANativeWindow_setBuffersGeometry = nullptr;
@@ -185,6 +194,9 @@ static void initNativeWindowWrapperImpl() {
         dlsym(sNativeWindowHandle, "AHardwareBuffer_lockPlanes"));
     fp_AHardwareBuffer_unlock = reinterpret_cast<AHardwareBuffer_unlock_t>(
         dlsym(sNativeWindowHandle, "AHardwareBuffer_unlock"));
+    // +++ ADDED: 解析 AHardwareBuffer_lock +++
+    fp_AHardwareBuffer_lock = reinterpret_cast<AHardwareBuffer_lock_t>(
+        dlsym(sNativeWindowHandle, "AHardwareBuffer_lock"));
 
     // 解析新增函数符号
     fp_ANativeWindow_setBuffersGeometry = reinterpret_cast<ANativeWindow_setBuffersGeometry_t>(
@@ -370,6 +382,17 @@ int AHardwareBuffer_lockPlanes(AHardwareBuffer* buffer,
 int AHardwareBuffer_unlock(AHardwareBuffer* buffer, int32_t* fence) {
     //printf("AHardwareBuffer_unlock called with buffer=%p, fence=%p\n", buffer, fence);
     SAFE_CALL_ERRNO(AHardwareBuffer_unlock, buffer, fence);
+}
+
+// +++ ADDED: AHardwareBuffer_lock 实现 +++
+int AHardwareBuffer_lock(AHardwareBuffer* buffer,
+                         uint64_t usage,
+                         int32_t fence,
+                         const ARect* rect,
+                         void** outVirtualAddress) {
+    //printf("AHardwareBuffer_lock called with buffer=%p, usage=%llu, fence=%d, rect=%p, out=%p\n",
+    //       buffer, (unsigned long long)usage, fence, rect, outVirtualAddress);
+    SAFE_CALL_ERRNO(AHardwareBuffer_lock, buffer, usage, fence, rect, outVirtualAddress);
 }
 
 // ---------- 新增函数实现 ----------
