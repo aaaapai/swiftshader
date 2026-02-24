@@ -61,11 +61,8 @@ AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreat
     }
 }
 
-AndroidSurfaceKHR::~AndroidSurfaceKHR()
-{
-    fprintf(stderr, "[AndroidSurfaceKHR::~%s] tid=%d, this=%p\n",
-            __FUNCTION__, getThreadId(), this);
-}
+// 移除析构函数定义，让编译器生成默认的
+// AndroidSurfaceKHR::~AndroidSurfaceKHR() = default;
 
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
@@ -154,8 +151,11 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
 
     AndroidSurfaceKHR *surface = new (memory) AndroidSurfaceKHR(pCreateInfo, memory);
     *pSurface = *surface; // 通过 ObjectBase 的 operator VkSurfaceKHR 转换
-    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, surface created at %p, window=%p, VkSurfaceKHR=%p\n",
-            __FUNCTION__, getThreadId(), surface, surface->window_, *pSurface);
+    
+    // 修正：正确打印 VkSurfaceKHR 值（需要转换）
+    uintptr_t surfaceHandle = static_cast<uintptr_t>(static_cast<void*>(*pSurface));
+    fprintf(stderr, "[AndroidSurfaceKHR::%s] tid=%d, surface created at %p, window=%p, VkSurfaceKHR=0x%lx\n",
+            __FUNCTION__, getThreadId(), surface, surface->window_, surfaceHandle);
     return VK_SUCCESS;
 }
 
