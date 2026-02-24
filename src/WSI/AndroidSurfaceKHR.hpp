@@ -63,7 +63,6 @@ private:
     ANativeWindow *window_;
     mutable std::mutex mutex_;
     mutable bool surfaceLost_;
-    bool windowOwned_;  // 标记是否拥有窗口所有权
     std::unordered_map<PresentImage *, HardwareBufferResource> buffers_;
 };
 
