@@ -1,36 +1,64 @@
-// AndroidSurfaceKHR.hpp
-#ifndef SWIFTSHADER_ANDROIDSURFACEKHR_HPP_INCLUDED
-#define SWIFTSHADER_ANDROIDSURFACEKHR_HPP_INCLUDED
+// Copyright 2026 The SwiftShader Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef SWIFTSHADER_ANDROIDSURFACEKHR_HPP
+#define SWIFTSHADER_ANDROIDSURFACEKHR_HPP
 
 #include "VkSurfaceKHR.hpp"
+#include "Vulkan/VkObject.hpp"
+
+#include <android/hardware_buffer.h>
 #include <android/native_window.h>
+
+#include <unordered_map>
 
 namespace vk {
 
-class AndroidSurfaceKHR : public SurfaceKHR
+class AndroidSurfaceKHR : public SurfaceKHR, public ObjectBase<AndroidSurfaceKHR, VkSurfaceKHR>
 {
 public:
-    AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo);
-    ~AndroidSurfaceKHR() override;
+    AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem);
+    void destroySurface(const VkAllocationCallbacks *pAllocator) override;
 
+    static size_t ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo);
     static VkResult Create(const VkAllocationCallbacks *pAllocator,
                            const VkAndroidSurfaceCreateInfoKHR *pCreateInfo,
                            VkSurfaceKHR *pSurface);
 
-    // 实现基类纯虚函数
-    void destroySurface(const VkAllocationCallbacks *pAllocator) override;
     VkResult getSurfaceCapabilities(const void *pSurfaceInfoPNext,
                                     VkSurfaceCapabilitiesKHR *pSurfaceCapabilities,
                                     void *pSurfaceCapabilitiesPNext) const override;
+
+    void *allocateImageMemory(PresentImage *image, const VkMemoryAllocateInfo &allocateInfo) override;
+    void releaseImageMemory(PresentImage *image) override;
     void attachImage(PresentImage *image) override;
     void detachImage(PresentImage *image) override;
     VkResult present(PresentImage *image) override;
 
 private:
-    ANativeWindow *window_;
-    mutable bool surfaceLost_ = false;   // 标记窗口是否已失效
+    struct HardwareBufferResource
+    {
+        AHardwareBuffer *buffer = nullptr;
+        void *mappedPtr = nullptr;
+        uint32_t stride = 0;
+    };
+
+    ANativeWindow *window_ = nullptr;
+    mutable bool surfaceLost_ = false;
+    std::unordered_map<PresentImage *, HardwareBufferResource> buffers_;
 };
 
 }  // namespace vk
 
-#endif
+#endif  // SWIFTSHADER_ANDROIDSURFACEKHR_HPP
