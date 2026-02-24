@@ -29,8 +29,6 @@ static uint32_t VulkanFormatToAHBFormat(VkFormat format)
     {
     case VK_FORMAT_R8G8B8A8_UNORM:
         return AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
-    case VK_FORMAT_R8G8B8X8_UNORM:
-        return AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM;
     case VK_FORMAT_R8G8B8_UNORM:
         return AHARDWAREBUFFER_FORMAT_R8G8B8_UNORM;
     case VK_FORMAT_R5G6B5_UNORM_PACK16:
@@ -198,7 +196,8 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
     // Obtain stride (bytes per row) – we may need it for later copying
     AHardwareBuffer_Desc actualDesc;
     AHardwareBuffer_describe(buffer, &actualDesc);
-    uint32_t stride = actualDesc.stride * 4; // assume 4 bytes per pixel, adjust for different formats
+    // Note: stride is in pixels, multiply by bytes per pixel (assume 4 for now)
+    uint32_t stride = actualDesc.stride * 4;
 
     buffers_[image] = { buffer, mappedPtr, stride };
     return mappedPtr;
