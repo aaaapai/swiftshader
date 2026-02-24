@@ -55,41 +55,37 @@ AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreat
 
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-
     fprintf(stderr, "AndroidSurfaceKHR::destroySurface\n");
 
-    // 释放所有硬件缓冲
-    for (auto &pair : buffers_)
+    // 释放所有硬件缓冲（需要锁保护）
     {
-        auto &res = pair.second;
-        if (res.mappedPtr)
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto &pair : buffers_)
         {
-            AHardwareBuffer_unlock(res.buffer, nullptr);
+            auto &res = pair.second;
+            if (res.mappedPtr)
+            {
+                AHardwareBuffer_unlock(res.buffer, nullptr);
+            }
+            if (res.buffer)
+            {
+                AHardwareBuffer_release(res.buffer);
+            }
         }
-        if (res.buffer)
-        {
-            AHardwareBuffer_release(res.buffer);
-        }
+        buffers_.clear();
+
+        // 标记表面已丢失
+        surfaceLost_ = true;
+
+        // 注意：不释放 window_，因为生命周期由调用者管理
+        window_ = nullptr;
     }
-    buffers_.clear();
 
-    // 标记表面已丢失
-    surfaceLost_ = true;
-
-    // 注意：不释放 window_，因为生命周期由调用者管理
-    window_ = nullptr;
-
-    // 调用析构函数并释放内存
+    // 调用析构函数（此时锁已释放，安全）
     this->~AndroidSurfaceKHR();
-    if (pAllocator && pAllocator->pfnFree)
-    {
-        pAllocator->pfnFree(pAllocator->pUserData, this);
-    }
-    else
-    {
-        free(this);
-    }
+
+    // ！！！重要：不再释放内存！内存释放由上层 vkDestroySurfaceKHR 通过 pAllocator 处理 ！！！
+    // 原代码中错误地调用了 pAllocator->pfnFree 或 free，导致双重释放
 }
 
 size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo)
