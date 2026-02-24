@@ -44,16 +44,24 @@ static uint32_t VulkanFormatToAHBFormat(VkFormat format)
 
 AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem)
     : window_(pCreateInfo->window)
+    , surfaceLost_(false)
+    , windowOwned_(false)  // 初始不拥有所有权
 {
     if (window_)
     {
-        ANativeWindow_acquire(window_);
+        // 注意：这里不调用 ANativeWindow_acquire，因为窗口是由调用者提供的
+        // 生命周期由调用者管理
+        ALOGV("AndroidSurfaceKHR created with window %p", window_);
     }
 }
 
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
-    // Release all allocated hardware buffers
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    ALOGV("AndroidSurfaceKHR::destroySurface");
+
+    // 释放所有硬件缓冲
     for (auto &pair : buffers_)
     {
         auto &res = pair.second;
@@ -68,13 +76,13 @@ void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
     }
     buffers_.clear();
 
-    if (window_)
-    {
-        ANativeWindow_release(window_);
-        window_ = nullptr;
-    }
+    // 标记表面已丢失
+    surfaceLost_ = true;
 
-    // Call destructor and free memory
+    // 注意：不释放 window_，因为所有权不属于我们
+    window_ = nullptr;
+
+    // 调用析构函数并释放内存
     this->~AndroidSurfaceKHR();
     if (pAllocator)
     {
@@ -95,13 +103,16 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
                                    const VkAndroidSurfaceCreateInfoKHR *pCreateInfo,
                                    VkSurfaceKHR *pSurface)
 {
+    ALOGV("AndroidSurfaceKHR::Create");
+
     if (!pCreateInfo || !pCreateInfo->window || !pSurface)
     {
+        ALOGE("AndroidSurfaceKHR::Create: invalid parameters");
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
     void *memory;
-    if (pAllocator)
+    if (pAllocator && pAllocator->pfnAllocation)
     {
         memory = pAllocator->pfnAllocation(pAllocator->pUserData,
                                            sizeof(AndroidSurfaceKHR),
@@ -114,11 +125,12 @@ VkResult AndroidSurfaceKHR::Create(const VkAllocationCallbacks *pAllocator,
     }
     if (!memory)
     {
+        ALOGE("AndroidSurfaceKHR::Create: out of host memory");
         return VK_ERROR_OUT_OF_HOST_MEMORY;
     }
 
     AndroidSurfaceKHR *surface = new (memory) AndroidSurfaceKHR(pCreateInfo, memory);
-    *pSurface = *surface; // Convert via ObjectBase's operator VkSurfaceKHR
+    *pSurface = *surface; // 通过 ObjectBase 的 operator VkSurfaceKHR 转换
     return VK_SUCCESS;
 }
 
@@ -126,6 +138,8 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
                                                    VkSurfaceCapabilitiesKHR *pSurfaceCapabilities,
                                                    void *pSurfaceCapabilitiesPNext) const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (surfaceLost_ || !window_)
     {
         return VK_ERROR_SURFACE_LOST_KHR;
@@ -140,7 +154,7 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
     }
 
     pSurfaceCapabilities->minImageCount = 2;
-    pSurfaceCapabilities->maxImageCount = 0; // no limit
+    pSurfaceCapabilities->maxImageCount = 0; // 无限制
     pSurfaceCapabilities->currentExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
     pSurfaceCapabilities->minImageExtent = { 1, 1 };
     pSurfaceCapabilities->maxImageExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
@@ -157,18 +171,32 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
 
 void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemoryAllocateInfo &allocateInfo)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (!window_ || surfaceLost_)
+    {
+        ALOGE("AndroidSurfaceKHR::allocateImageMemory: surface lost");
         return nullptr;
+    }
 
     const vk::Image *vkImage = image->getImage();
+    if (!vkImage)
+    {
+        ALOGE("AndroidSurfaceKHR::allocateImageMemory: null image");
+        return nullptr;
+    }
+
     VkExtent3D extent = vkImage->getExtent();
     VkFormat format = vkImage->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
 
     uint32_t ahbFormat = VulkanFormatToAHBFormat(format);
     if (ahbFormat == 0)
-        return nullptr; // unsupported format
+    {
+        ALOGE("AndroidSurfaceKHR::allocateImageMemory: unsupported format %d", format);
+        return nullptr;
+    }
 
-    // Configure hardware buffer description
+    // 配置硬件缓冲描述
     AHardwareBuffer_Desc desc = {};
     desc.width = extent.width;
     desc.height = extent.height;
@@ -180,24 +208,25 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
     AHardwareBuffer *buffer;
     if (AHardwareBuffer_allocate(&desc, &buffer) != 0)
     {
+        ALOGE("AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_allocate failed");
         return nullptr;
     }
 
-    // Lock to get CPU writable pointer
+    // 锁定获取 CPU 可写指针
     void *mappedPtr = nullptr;
     ARect rect = { 0, 0, static_cast<int32_t>(extent.width), static_cast<int32_t>(extent.height) };
     if (AHardwareBuffer_lock(buffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
                              -1, &rect, &mappedPtr) != 0)
     {
+        ALOGE("AndroidSurfaceKHR::allocateImageMemory: AHardwareBuffer_lock failed");
         AHardwareBuffer_release(buffer);
         return nullptr;
     }
 
-    // Obtain stride (bytes per row) – we may need it for later copying
+    // 获取实际描述信息，计算步幅
     AHardwareBuffer_Desc actualDesc;
     AHardwareBuffer_describe(buffer, &actualDesc);
-    // Note: stride is in pixels, multiply by bytes per pixel (assume 4 for now)
-    uint32_t stride = actualDesc.stride * 4;
+    uint32_t stride = actualDesc.stride * 4; // 假设 4 字节每像素
 
     buffers_[image] = { buffer, mappedPtr, stride };
     return mappedPtr;
@@ -205,6 +234,8 @@ void *AndroidSurfaceKHR::allocateImageMemory(PresentImage *image, const VkMemory
 
 void AndroidSurfaceKHR::releaseImageMemory(PresentImage *image)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     auto it = buffers_.find(image);
     if (it != buffers_.end())
     {
@@ -222,22 +253,24 @@ void AndroidSurfaceKHR::releaseImageMemory(PresentImage *image)
 
 void AndroidSurfaceKHR::attachImage(PresentImage *image)
 {
-    // No special handling required
+    // 无需特殊处理
 }
 
 void AndroidSurfaceKHR::detachImage(PresentImage *image)
 {
-    // No special handling required (release is called separately)
+    // 无需特殊处理
 }
 
 VkResult AndroidSurfaceKHR::present(PresentImage *image)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (surfaceLost_ || !window_)
     {
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
-    // Find the hardware buffer associated with this image
+    // 查找与此图像关联的硬件缓冲
     auto it = buffers_.find(image);
     if (it == buffers_.end())
     {
@@ -245,7 +278,7 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     }
     HardwareBufferResource &res = it->second;
 
-    // Check window size
+    // 检查窗口大小
     int32_t windowWidth = ANativeWindow_getWidth(window_);
     int32_t windowHeight = ANativeWindow_getHeight(window_);
     if (windowWidth <= 0 || windowHeight <= 0)
@@ -262,8 +295,7 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
         return VK_ERROR_OUT_OF_DATE_KHR;
     }
 
-    // Option 1: Directly use AHardwareBuffer with ANativeWindow (requires API level 29+)
-    // Here we fall back to simple lock/copy for compatibility.
+    // 锁定窗口缓冲区
     ANativeWindow_Buffer outBuffer;
     ARect dirty = { 0, 0, windowWidth, windowHeight };
     if (ANativeWindow_lock(window_, &outBuffer, &dirty) != 0)
@@ -272,15 +304,18 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
-    // Copy from hardware buffer to window buffer
-    // Assumes both are 32bpp RGBA/X
-    uint32_t srcStride = res.stride; // bytes per row in AHB
-    uint32_t dstStride = outBuffer.stride * 4; // bytes per row in window buffer
+    // 从硬件缓冲复制到窗口缓冲区
+    // 假设两者都是 32bpp RGBA
+    uint32_t srcStride = res.stride;          // AHB 的字节步幅
+    uint32_t dstStride = outBuffer.stride * 4; // 窗口缓冲区的字节步幅
     uint8_t *srcBase = static_cast<uint8_t*>(res.mappedPtr);
     uint8_t *dstBase = static_cast<uint8_t*>(outBuffer.bits);
+    
     for (uint32_t y = 0; y < imageExtent.height; ++y)
     {
-        memcpy(dstBase + y * dstStride, srcBase + y * srcStride, imageExtent.width * 4);
+        memcpy(dstBase + y * dstStride, 
+               srcBase + y * srcStride, 
+               imageExtent.width * 4);
     }
 
     ANativeWindow_unlockAndPost(window_);
