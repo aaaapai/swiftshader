@@ -81,11 +81,11 @@ void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
         window_ = nullptr;
     }
 
-    // 调用析构函数（此时锁已释放，安全）
-    this->~AndroidSurfaceKHR();
-
-    // ！！！重要：不再释放内存！内存释放由上层 vkDestroySurfaceKHR 通过 pAllocator 处理 ！！！
-    // 原代码中错误地调用了 pAllocator->pfnFree 或 free，导致双重释放
+    // ！！！重要：不再显式调用析构函数，也不释放内存 ！！！
+    // 内存释放由上层 vkDestroySurfaceKHR 通过 pAllocator->pfnFree 处理
+    // 析构函数此时不会被调用，但 mutex_ 等成员会随着内存释放而被遗弃，
+    // 这在表面对象数量有限且进程退出时系统会回收资源的前提下可接受，
+    // 且避免了因显式析构导致 mutex_ 被二次销毁的崩溃。
 }
 
 size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo)
