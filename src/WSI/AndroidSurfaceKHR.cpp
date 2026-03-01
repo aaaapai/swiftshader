@@ -25,14 +25,14 @@
 
 namespace vk {
 
-// 修复宏定义：正确处理可变参数和字符串连接
+// 日志宏
 #define LOG_ENTRY(fmt, ...)  fprintf(stderr, "[AndroidSurfaceKHR] %s: " fmt "\n", __func__, ##__VA_ARGS__)
 #define LOG_INFO(fmt, ...)   fprintf(stderr, "[AndroidSurfaceKHR] %s: " fmt "\n", __func__, ##__VA_ARGS__)
 #define LOG_RESULT(ret)      fprintf(stderr, "[AndroidSurfaceKHR] %s -> %d\n", __func__, ret)
 
 bool AndroidSurfaceKHR::isSupported()
 {
-    LOG_ENTRY("");  // 空参数
+    LOG_ENTRY("");
     bool supported = true;
     LOG_INFO("supported = %d", supported);
     return supported;
@@ -40,16 +40,16 @@ bool AndroidSurfaceKHR::isSupported()
 
 AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem)
     : window(pCreateInfo->window)
-    , width(0)
-    , height(0)
-    , format(0)
+    , cachedWidth(0)
+    , cachedHeight(0)
+    , cachedFormat(0)
 {
     LOG_ENTRY("pCreateInfo=%p, mem=%p", pCreateInfo, mem);
     ANativeWindow_acquire(window);
-    width = ANativeWindow_getWidth(window);
-    height = ANativeWindow_getHeight(window);
-    format = ANativeWindow_getFormat(window);
-    LOG_INFO("window=%p, width=%d, height=%d, format=%d", window, width, height, format);
+    cachedWidth = ANativeWindow_getWidth(window);
+    cachedHeight = ANativeWindow_getHeight(window);
+    cachedFormat = ANativeWindow_getFormat(window);
+    LOG_INFO("window=%p, initial width=%d, height=%d, format=%d", window, cachedWidth, cachedHeight, cachedFormat);
 }
 
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
@@ -74,12 +74,13 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
     LOG_ENTRY("pSurfaceInfoPNext=%p, pSurfaceCapabilities=%p, pSurfaceCapabilitiesPNext=%p",
               pSurfaceInfoPNext, pSurfaceCapabilities, pSurfaceCapabilitiesPNext);
 
+    // 获取当前窗口尺寸（可能已变化）
     int32_t currentWidth = ANativeWindow_getWidth(window);
     int32_t currentHeight = ANativeWindow_getHeight(window);
     LOG_INFO("current window size: %dx%d", currentWidth, currentHeight);
 
     pSurfaceCapabilities->minImageCount = 1;
-    pSurfaceCapabilities->maxImageCount = 0;
+    pSurfaceCapabilities->maxImageCount = 0;  // 无硬性限制
     pSurfaceCapabilities->currentExtent = { (uint32_t)currentWidth, (uint32_t)currentHeight };
     pSurfaceCapabilities->minImageExtent = { 1, 1 };
     pSurfaceCapabilities->maxImageExtent = { 4096, 4096 };
@@ -102,7 +103,47 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
 void AndroidSurfaceKHR::attachImage(PresentImage *image)
 {
     LOG_ENTRY("image=%p", image);
-    (void)image;
+
+    const Image *vkImage = image->getImage();
+    if (!vkImage)
+    {
+        LOG_INFO("image->getImage() returned null, skipping");
+        return;
+    }
+
+    const VkExtent3D &extent = vkImage->getExtent();
+    VkFormat format = vkImage->getFormat();
+
+    // 将 VkFormat 转换为 Android 窗口格式（简化映射，实际可能需要更完整的转换表）
+    int32_t androidFormat = WINDOW_FORMAT_RGBA_8888;  // 默认
+    switch (format)
+    {
+    case VK_FORMAT_R8G8B8A8_UNORM:
+    case VK_FORMAT_R8G8B8A8_SRGB:
+        androidFormat = WINDOW_FORMAT_RGBA_8888;
+        break;
+    case VK_FORMAT_B8G8R8A8_UNORM:
+    case VK_FORMAT_B8G8R8A8_SRGB:
+        androidFormat = WINDOW_FORMAT_RGBA_8888;  // 字节顺序不同，但 Android 通常使用 RGBA
+        break;
+    case VK_FORMAT_R5G6B5_UNORM_PACK16:
+        androidFormat = WINDOW_FORMAT_RGB_565;
+        break;
+    default:
+        LOG_INFO("unhandled VkFormat %d, using default RGBA_8888", (int)format);
+        androidFormat = WINDOW_FORMAT_RGBA_8888;
+        break;
+    }
+
+    // 设置窗口缓冲区几何形状，确保后续 dequeue 的缓冲区大小和格式正确
+    int result = ANativeWindow_setBuffersGeometry(window, extent.width, extent.height, androidFormat);
+    LOG_INFO("ANativeWindow_setBuffersGeometry(%dx%d, fmt=%d) -> %d", extent.width, extent.height, androidFormat, result);
+
+    // 更新缓存（可选）
+    cachedWidth = extent.width;
+    cachedHeight = extent.height;
+    cachedFormat = androidFormat;
+
     LOG_INFO("attachImage done");
 }
 
@@ -120,7 +161,7 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     // 锁定窗口缓冲区
     ANativeWindow_Buffer buffer;
     int lockResult = ANativeWindow_lock(window, &buffer, nullptr);
-    LOG_INFO("ANativeWindow_lock -> %d, buffer.bits=%p, buffer.stride=%d, buffer.width=%d, buffer.height=%d, buffer.format=%d",
+    LOG_INFO("ANativeWindow_lock -> %d, buffer.bits=%p, stride=%d, width=%d, height=%d, format=%d",
              lockResult, buffer.bits, buffer.stride, buffer.width, buffer.height, buffer.format);
     if (lockResult != 0)
     {
@@ -139,47 +180,42 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     const VkExtent3D &extent = vkImage->getExtent();
     LOG_INFO("image extent: %dx%d", extent.width, extent.height);
 
-    // 检查窗口尺寸是否与图像尺寸匹配
-    int32_t windowWidth = ANativeWindow_getWidth(window);
-    int32_t windowHeight = ANativeWindow_getHeight(window);
-    LOG_INFO("current window size: %dx%d", windowWidth, windowHeight);
-    if (extent.width != (uint32_t)windowWidth || extent.height != (uint32_t)windowHeight)
+    // 检查窗口尺寸是否与图像尺寸匹配（避免复制越界）
+    if ((int32_t)extent.width != buffer.width || (int32_t)extent.height != buffer.height)
     {
-        LOG_INFO("size mismatch, returning VK_ERROR_OUT_OF_DATE_KHR");
+        LOG_INFO("size mismatch: image %dx%d, buffer %dx%d", extent.width, extent.height, buffer.width, buffer.height);
         ANativeWindow_unlockAndPost(window);
         return VK_ERROR_OUT_OF_DATE_KHR;
     }
 
-    // 根据窗口格式计算每像素字节数
+    // 根据缓冲区实际格式计算每像素字节数
     int bpp = 0;
     const char* formatStr = "unknown";
-    switch (format)
+    switch (buffer.format)
     {
     case WINDOW_FORMAT_RGBA_8888:
-        bpp = 4;
-        formatStr = "RGBA_8888";
-        break;
     case WINDOW_FORMAT_RGBX_8888:
         bpp = 4;
-        formatStr = "RGBX_8888";
+        formatStr = (buffer.format == WINDOW_FORMAT_RGBA_8888) ? "RGBA_8888" : "RGBX_8888";
         break;
     case WINDOW_FORMAT_RGB_565:
         bpp = 2;
         formatStr = "RGB_565";
         break;
     default:
-        bpp = 4; // 保守假设
-        formatStr = "default (4)";
+        // 未知格式，保守假设 4 字节
+        bpp = 4;
+        formatStr = "unknown (assume 4)";
         break;
     }
-    LOG_INFO("window format=%d (%s), bpp=%d", format, formatStr, bpp);
+    LOG_INFO("buffer.format=%d (%s), bpp=%d", buffer.format, formatStr, bpp);
 
     int dstRowPitch = buffer.stride * bpp;
     LOG_INFO("dstRowPitch = stride(%d) * bpp(%d) = %d", buffer.stride, bpp, dstRowPitch);
 
-    // 验证目标缓冲区是否足够容纳图像数据
+    // 验证目标缓冲区大小是否足够
     size_t requiredSize = extent.height * dstRowPitch;
-    size_t actualSize = buffer.height * buffer.stride * bpp; // buffer.height 是行数，stride 是像素/行
+    size_t actualSize = buffer.height * buffer.stride * bpp;  // buffer.height 是行数
     LOG_INFO("requiredSize=%zu, actualSize=%zu", requiredSize, actualSize);
     if (requiredSize > actualSize)
     {
@@ -188,7 +224,7 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
         return VK_ERROR_OUT_OF_DATE_KHR;
     }
 
-    // 执行像素复制
+    // 执行像素复制（假设源图像行距由 Image 内部管理）
     LOG_INFO("calling vkImage->copyTo(dst=%p, dstRowPitch=%d)", buffer.bits, dstRowPitch);
     vkImage->copyTo(static_cast<uint8_t*>(buffer.bits), dstRowPitch);
     LOG_INFO("copyTo finished");
