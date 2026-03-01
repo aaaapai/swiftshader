@@ -28,7 +28,7 @@ namespace vk {
 class AndroidSurfaceKHR : public SurfaceKHR, public ObjectBase<AndroidSurfaceKHR, VkSurfaceKHR>
 {
 public:
-    static bool isSupported(); // 始终返回 true（Android 平台）
+    static bool isSupported();
 
     AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem);
     void destroySurface(const VkAllocationCallbacks *pAllocator) override;
@@ -44,10 +44,10 @@ public:
     VkResult present(PresentImage *image) override;
 
 private:
-    ANativeWindow *window;                     // 持有的 Android 原生窗口
-    int32_t width;                              // 缓存的窗口宽度
-    int32_t height;                             // 缓存的窗口高度
-    int32_t format;                              // 窗口格式（如 WINDOW_FORMAT_RGBA_8888）
+    ANativeWindow *window;
+    int32_t cachedWidth;   // 缓存的窗口宽度（用于快速访问）
+    int32_t cachedHeight;  // 缓存的窗口高度
+    int32_t cachedFormat;  // 缓存的窗口格式（可能过时，present 时会重新获取）
 };
 
 }  // namespace vk
