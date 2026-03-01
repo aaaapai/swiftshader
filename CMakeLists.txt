@@ -225,7 +225,7 @@ if(ARCH STREQUAL "loongarch64")
 else()
   set(DEFAULT_SWIFTSHADER_LLVM_VERSION "10.0")
   set(SWIFTSHADER_LLVM_VERSION ${DEFAULT_SWIFTSHADER_LLVM_VERSION} CACHE STRING "LLVM version to use")
-  set_property(CACHE SWIFTSHADER_LLVM_VERSION PROPERTY STRINGS "10.0")
+  set_property(CACHE SWIFTSHADER_LLVM_VERSION PROPERTY STRINGS "16.0")
 endif()
 
 # If defined, overrides the default optimization level of the current reactor backend.
