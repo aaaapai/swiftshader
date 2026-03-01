@@ -25,14 +25,14 @@
 
 namespace vk {
 
-// Helper macro to print function entry with parameters
-#define LOG_ENTRY(...)  fprintf(stderr, "[AndroidSurfaceKHR] %s: entering (" __VA_ARGS__ ")\n", __func__)
-#define LOG_INFO(...)   fprintf(stderr, "[AndroidSurfaceKHR] %s: " __VA_ARGS__ "\n", __func__)
-#define LOG_RESULT(ret) fprintf(stderr, "[AndroidSurfaceKHR] %s -> %d\n", __func__, ret)
+// 修复宏定义：正确处理可变参数和字符串连接
+#define LOG_ENTRY(fmt, ...)  fprintf(stderr, "[AndroidSurfaceKHR] %s: " fmt "\n", __func__, ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...)   fprintf(stderr, "[AndroidSurfaceKHR] %s: " fmt "\n", __func__, ##__VA_ARGS__)
+#define LOG_RESULT(ret)      fprintf(stderr, "[AndroidSurfaceKHR] %s -> %d\n", __func__, ret)
 
 bool AndroidSurfaceKHR::isSupported()
 {
-    LOG_ENTRY();  // no parameters
+    LOG_ENTRY("");  // 空参数
     bool supported = true;
     LOG_INFO("supported = %d", supported);
     return supported;
