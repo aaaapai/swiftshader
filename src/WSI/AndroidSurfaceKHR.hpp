@@ -1,4 +1,4 @@
-// Copyright 2026 The SwiftShader Authors. All Rights Reserved.
+// Copyright 2025 The SwiftShader Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,51 +18,36 @@
 #include "VkSurfaceKHR.hpp"
 #include "Vulkan/VkObject.hpp"
 
-#include <android/hardware_buffer.h>
+#include <vulkan/vulkan_android.h>
 #include <android/native_window.h>
 
 #include <unordered_map>
-#include <mutex>
 
 namespace vk {
 
 class AndroidSurfaceKHR : public SurfaceKHR, public ObjectBase<AndroidSurfaceKHR, VkSurfaceKHR>
 {
 public:
-    AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem);
-    ~AndroidSurfaceKHR() override = default;  // 使用默认析构函数
+    static bool isSupported(); // 始终返回 true（Android 平台）
 
+    AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo, void *mem);
     void destroySurface(const VkAllocationCallbacks *pAllocator) override;
 
     static size_t ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo);
-    static VkResult Create(const VkAllocationCallbacks *pAllocator,
-                           const VkAndroidSurfaceCreateInfoKHR *pCreateInfo,
-                           VkSurfaceKHR *pSurface);
 
     VkResult getSurfaceCapabilities(const void *pSurfaceInfoPNext,
                                     VkSurfaceCapabilitiesKHR *pSurfaceCapabilities,
                                     void *pSurfaceCapabilitiesPNext) const override;
 
-    void *allocateImageMemory(PresentImage *image, const VkMemoryAllocateInfo &allocateInfo) override;
-    void releaseImageMemory(PresentImage *image) override;
     void attachImage(PresentImage *image) override;
     void detachImage(PresentImage *image) override;
     VkResult present(PresentImage *image) override;
 
-    ANativeWindow* getNativeWindow() const { return window_; }
-
 private:
-    struct HardwareBufferResource
-    {
-        AHardwareBuffer *buffer = nullptr;
-        void *mappedPtr = nullptr;
-        uint32_t stride = 0;
-    };
-
-    ANativeWindow *window_;
-    mutable std::mutex mutex_;
-    mutable bool surfaceLost_;
-    std::unordered_map<PresentImage *, HardwareBufferResource> buffers_;
+    ANativeWindow *window;                     // 持有的 Android 原生窗口
+    int32_t width;                              // 缓存的窗口宽度
+    int32_t height;                             // 缓存的窗口高度
+    int32_t format;                              // 窗口格式（如 WINDOW_FORMAT_RGBA_8888）
 };
 
 }  // namespace vk
