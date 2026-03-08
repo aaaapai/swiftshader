@@ -20,7 +20,7 @@
 
 #include <android/native_window.h>
 #include <algorithm>
-#include <cstdio>      // for fprintf
+#include <cstdio>
 #include <cstring>
 
 namespace vk {
@@ -55,8 +55,16 @@ AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreat
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
     LOG_ENTRY("pAllocator=%p", pAllocator);
-    ANativeWindow_release(window);
-    LOG_INFO("window released");
+    if (window)
+    {
+        ANativeWindow_release(window);
+        window = nullptr;
+        LOG_INFO("window released and set to null");
+    }
+    else
+    {
+        LOG_INFO("window already null");
+    }
 }
 
 size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo)
@@ -73,6 +81,12 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
 {
     LOG_ENTRY("pSurfaceInfoPNext=%p, pSurfaceCapabilities=%p, pSurfaceCapabilitiesPNext=%p",
               pSurfaceInfoPNext, pSurfaceCapabilities, pSurfaceCapabilitiesPNext);
+
+    if (!window)
+    {
+        LOG_INFO("window is null, returning VK_ERROR_SURFACE_LOST_KHR");
+        return VK_ERROR_SURFACE_LOST_KHR;
+    }
 
     // 获取当前窗口尺寸（可能已变化）
     int32_t currentWidth = ANativeWindow_getWidth(window);
@@ -111,10 +125,16 @@ void AndroidSurfaceKHR::attachImage(PresentImage *image)
         return;
     }
 
+    if (!window)
+    {
+        LOG_INFO("window is null, cannot attach image");
+        return;
+    }
+
     const VkExtent3D &extent = vkImage->getExtent();
     VkFormat format = vkImage->getFormat();
 
-    // 将 VkFormat 转换为 Android 窗口格式（简化映射，实际可能需要更完整的转换表）
+    // 将 VkFormat 转换为 Android 窗口格式（简化映射）
     int32_t androidFormat = WINDOW_FORMAT_RGBA_8888;  // 默认
     switch (format)
     {
@@ -138,8 +158,12 @@ void AndroidSurfaceKHR::attachImage(PresentImage *image)
     // 设置窗口缓冲区几何形状，确保后续 dequeue 的缓冲区大小和格式正确
     int result = ANativeWindow_setBuffersGeometry(window, extent.width, extent.height, androidFormat);
     LOG_INFO("ANativeWindow_setBuffersGeometry(%dx%d, fmt=%d) -> %d", extent.width, extent.height, androidFormat, result);
+    if (result != 0)
+    {
+        LOG_INFO("setBuffersGeometry failed, continue anyway");
+    }
 
-    // 更新缓存（可选）
+    // 更新缓存
     cachedWidth = extent.width;
     cachedHeight = extent.height;
     cachedFormat = androidFormat;
@@ -158,6 +182,12 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
 {
     LOG_ENTRY("image=%p", image);
 
+    if (!window)
+    {
+        LOG_INFO("window is null, returning VK_ERROR_SURFACE_LOST_KHR");
+        return VK_ERROR_SURFACE_LOST_KHR;
+    }
+
     // 锁定窗口缓冲区
     ANativeWindow_Buffer buffer;
     int lockResult = ANativeWindow_lock(window, &buffer, nullptr);
@@ -166,6 +196,14 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     if (lockResult != 0)
     {
         LOG_INFO("lock failed, returning VK_ERROR_SURFACE_LOST_KHR");
+        return VK_ERROR_SURFACE_LOST_KHR;
+    }
+
+    // 确保缓冲区指针有效
+    if (buffer.bits == nullptr)
+    {
+        LOG_INFO("buffer.bits is null after lock, unlocking and returning error");
+        ANativeWindow_unlockAndPost(window);
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
@@ -180,7 +218,7 @@ VkResult AndroidSurfaceKHR::present(PresentImage *image)
     const VkExtent3D &extent = vkImage->getExtent();
     LOG_INFO("image extent: %dx%d", extent.width, extent.height);
 
-    // 检查窗口尺寸是否与图像尺寸匹配（避免复制越界）
+    // 检查窗口尺寸是否与图像尺寸匹配
     if ((int32_t)extent.width != buffer.width || (int32_t)extent.height != buffer.height)
     {
         LOG_INFO("size mismatch: image %dx%d, buffer %dx%d", extent.width, extent.height, buffer.width, buffer.height);
