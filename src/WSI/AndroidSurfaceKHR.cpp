@@ -55,7 +55,7 @@ AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreat
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
     LOG_ENTRY("pAllocator=%p", pAllocator);
-    ANativeWindow_release(window);
+    //ANativeWindow_release(window);
     LOG_INFO("window released");
 }
 
