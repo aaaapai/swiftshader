@@ -55,14 +55,14 @@ AndroidSurfaceKHR::AndroidSurfaceKHR(const VkAndroidSurfaceCreateInfoKHR *pCreat
 void AndroidSurfaceKHR::destroySurface(const VkAllocationCallbacks *pAllocator)
 {
     LOG_ENTRY("pAllocator=%p", pAllocator);
-    //ANativeWindow_release(window);
+    ANativeWindow_release(window);
     LOG_INFO("window released");
 }
 
 size_t AndroidSurfaceKHR::ComputeRequiredAllocationSize(const VkAndroidSurfaceCreateInfoKHR *pCreateInfo)
 {
     LOG_ENTRY("pCreateInfo=%p", pCreateInfo);
-    size_t size = 0;
+    size_t size = sizeof(AndroidSurfaceKHR);
     LOG_INFO("return size=%zu", size);
     return size;
 }
@@ -80,7 +80,7 @@ VkResult AndroidSurfaceKHR::getSurfaceCapabilities(const void *pSurfaceInfoPNext
     LOG_INFO("current window size: %dx%d", currentWidth, currentHeight);
 
     pSurfaceCapabilities->minImageCount = 1;
-    pSurfaceCapabilities->maxImageCount = 0;  // 无硬性限制
+    pSurfaceCapabilities->maxImageCount = 8;
     pSurfaceCapabilities->currentExtent = { (uint32_t)currentWidth, (uint32_t)currentHeight };
     pSurfaceCapabilities->minImageExtent = { 1, 1 };
     pSurfaceCapabilities->maxImageExtent = { 4096, 4096 };
